@@ -1,5 +1,9 @@
+import { Platform } from 'react-native';
+
 import { authClient } from '../auth/client';
 import { env } from '../config/env';
+
+const FETCH_CREDENTIALS: RequestCredentials = Platform.OS === 'web' ? 'include' : 'omit';
 
 /**
  * Streaming client for the Rooti SSE endpoint.
@@ -28,12 +32,14 @@ export interface RootiStreamOptions {
 }
 
 export async function streamRootiMessage(opts: RootiStreamOptions): Promise<void> {
-  const cookie = authClient.getCookie();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     Accept: 'text/event-stream',
   };
-  if (cookie) headers['Cookie'] = cookie;
+  if (Platform.OS !== 'web') {
+    const cookie = authClient.getCookie();
+    if (cookie) headers['Cookie'] = cookie;
+  }
 
   const res = await fetch(`${env.API_URL}/rooti/messages`, {
     method: 'POST',
@@ -45,7 +51,7 @@ export async function streamRootiMessage(opts: RootiStreamOptions): Promise<void
       ...(opts.photoIds && opts.photoIds.length > 0 ? { photoIds: opts.photoIds } : {}),
       ...(opts.location ? { location: opts.location } : {}),
     }),
-    credentials: 'omit',
+    credentials: FETCH_CREDENTIALS,
     signal: opts.signal,
   });
 

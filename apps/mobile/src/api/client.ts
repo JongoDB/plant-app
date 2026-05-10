@@ -1,15 +1,25 @@
+import { Platform } from 'react-native';
 import type { HomeLocation, Plant } from '@plant-app/shared';
 
 import { authClient } from '../auth/client';
 import { env } from '../config/env';
 
 /**
+ * On native, @better-auth/expo stores the session cookie in SecureStore
+ * (since there's no browser cookie jar) and we attach it as a Cookie header
+ * with `credentials: 'omit'`. On web, the session cookie is HttpOnly so JS
+ * can't see it; the browser handles cookies automatically when we use
+ * `credentials: 'include'`.
+ */
+const FETCH_CREDENTIALS: RequestCredentials = Platform.OS === 'web' ? 'include' : 'omit';
+
+/**
  * Tiny fetch wrapper. Grows with each slice (SSE for Rooti, etc.) but stays
  * a thin layer over fetch — no client lib.
  *
- * Auth: when the user is signed in, we pull the session cookie from
- * better-auth's SecureStore-backed storage and attach it as a Cookie header.
- * `credentials: 'omit'` matches the recommended @better-auth/expo pattern.
+ * Auth: native uses the manual Cookie header from `authClient.getCookie()`;
+ * web uses `credentials: 'include'` and lets the browser handle the
+ * HttpOnly session cookie. See FETCH_CREDENTIALS above.
  */
 
 export class ApiError extends Error {
@@ -28,14 +38,16 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body) headers['Content-Type'] = 'application/json';
 
-  const cookie = authClient.getCookie();
-  if (cookie) headers['Cookie'] = cookie;
+  if (Platform.OS !== 'web') {
+    const cookie = authClient.getCookie();
+    if (cookie) headers['Cookie'] = cookie;
+  }
 
   const res = await fetch(url, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
-    credentials: 'omit',
+    credentials: FETCH_CREDENTIALS,
   });
   if (!res.ok) {
     let detail = '';

@@ -182,6 +182,13 @@ function WeatherCard({
       </Pressable>
     );
   }
+  if (status === 'error') {
+    return (
+      <Pressable onPress={onEnable} style={styles.weatherCardMuted}>
+        <Text style={styles.weatherMutedText}>Couldn't fetch weather. Tap to retry.</Text>
+      </Pressable>
+    );
+  }
   if (status !== 'ready' || !weather) return null;
   const c = weather.current;
   return (

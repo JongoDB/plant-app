@@ -80,13 +80,26 @@ export async function rootiRoutes(
     const userId = session.user.id;
 
     // SSE plumbing: take over the raw response, write events manually.
+    // reply.hijack() bypasses Fastify's CORS middleware, so for cross-origin
+    // browser callers (e.g. web bundle on :19006 calling API on :3000) we
+    // have to set the CORS headers ourselves — otherwise the browser blocks
+    // the response before any events are read.
     reply.hijack();
     const raw = reply.raw;
+    const origin = request.headers.origin;
+    const corsHeaders: Record<string, string> = origin
+      ? {
+          'Access-Control-Allow-Origin': origin,
+          'Access-Control-Allow-Credentials': 'true',
+          Vary: 'Origin',
+        }
+      : {};
     raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
+      ...corsHeaders,
     });
 
     const send = (event: string, data: unknown): void => {

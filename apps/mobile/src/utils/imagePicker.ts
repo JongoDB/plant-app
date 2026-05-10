@@ -1,13 +1,18 @@
+import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 
 /**
  * Image picking + on-device resize helpers.
  *
- * Resize policy: long edge <= 1568px, JPEG @ quality 0.85. Anthropic's
- * vision sweet spot is roughly 1568px and ~1.5 MB; bigger inputs cost
- * tokens with diminishing accuracy gains and our upload bandwidth scales
- * linearly. We always strip EXIF (cheap privacy win + smaller payload).
+ * Resize policy on native: long edge <= 1568px, JPEG @ quality 0.85.
+ * That's Anthropic's vision sweet spot — bigger inputs cost tokens with
+ * diminishing returns. We strip EXIF (cheap privacy win + smaller payload).
+ *
+ * On web, expo-image-manipulator's web support is incomplete in SDK 55, so
+ * we skip the resize step. The picker's <input type="file"> already gives
+ * us a Blob the browser can fetch from the blob: URI, and the API's 10 MB
+ * upload cap protects us from outliers.
  */
 
 export interface PickedImage {
@@ -48,11 +53,24 @@ export async function pickFromCamera(): Promise<PickedImage | null> {
 }
 
 async function processAsset(asset: ImagePicker.ImagePickerAsset): Promise<PickedImage> {
+  const baseMime = asset.mimeType ?? 'image/jpeg';
+
+  // Web: skip native-only ImageManipulator. Trust the picker's output.
+  if (Platform.OS === 'web') {
+    return {
+      uri: asset.uri,
+      mimeType: baseMime,
+      width: asset.width,
+      height: asset.height,
+    };
+  }
+
+  // Native: resize if needed.
   const longEdge = Math.max(asset.width, asset.height);
   if (longEdge <= MAX_LONG_EDGE) {
     return {
       uri: asset.uri,
-      mimeType: asset.mimeType ?? 'image/jpeg',
+      mimeType: baseMime,
       width: asset.width,
       height: asset.height,
     };

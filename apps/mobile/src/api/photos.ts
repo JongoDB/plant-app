@@ -1,13 +1,24 @@
+import { Platform } from 'react-native';
+
 import { authClient } from '../auth/client';
 import { env } from '../config/env';
 
 /**
  * Photo upload + URL helpers.
  *
- * RN's `fetch` accepts a FormData entry of the shape `{ uri, name, type }`
- * for files. TypeScript's standard FormData typings don't model that, so
- * we cast through a local helper type to keep the call site clean.
+ * Two FormData regimes — easy to get wrong:
+ *  - Native: RN-specific shape `{ uri, name, type }`. RN's fetch reads the
+ *    file off the filesystem and serializes it. TypeScript's FormData type
+ *    doesn't model this, so we cast.
+ *  - Web: standard `Blob` / `File`. The picker hands us a `blob:` URI that
+ *    we have to resolve to an actual Blob via fetch() before appending —
+ *    pass the {uri,...} shape and the browser stringifies it as
+ *    "[object Object]" and uploads garbage.
+ *
+ * Auth: same platform split as src/api/client.ts — manual Cookie + 'omit'
+ * on native, browser-managed + 'include' on web.
  */
+const FETCH_CREDENTIALS: RequestCredentials = Platform.OS === 'web' ? 'include' : 'omit';
 
 export type PhotoMode = 'health' | 'growth' | 'general';
 
@@ -37,28 +48,43 @@ interface RnFilePart {
 
 export async function uploadPhoto(opts: UploadPhotoOptions): Promise<UploadedPhoto> {
   const formData = new FormData();
-  const filePart: RnFilePart = {
-    uri: opts.uri,
-    name: `photo.${extForMime(opts.mimeType)}`,
-    type: opts.mimeType,
-  };
-  // RN-specific shape — TS types don't expose it, so cast through Blob.
-  formData.append('file', filePart as unknown as Blob);
+  const filename = `photo.${extForMime(opts.mimeType)}`;
+
+  if (Platform.OS === 'web') {
+    // Browser FormData wants a real Blob; resolve the picker's blob: URI.
+    const response = await fetch(opts.uri);
+    if (!response.ok) {
+      throw new Error(`Couldn't read picked image (HTTP ${response.status}).`);
+    }
+    const blob = await response.blob();
+    formData.append('file', blob, filename);
+  } else {
+    // RN: pass the {uri, name, type} shape; the platform fetch reads from
+    // the filesystem and serializes the multipart entry.
+    const filePart: RnFilePart = {
+      uri: opts.uri,
+      name: filename,
+      type: opts.mimeType,
+    };
+    formData.append('file', filePart as unknown as Blob);
+  }
   formData.append('width', String(opts.width));
   formData.append('height', String(opts.height));
   if (opts.plantId) formData.append('plantId', opts.plantId);
   if (opts.mode) formData.append('mode', opts.mode);
 
-  const cookie = authClient.getCookie();
   const headers: Record<string, string> = {};
-  if (cookie) headers['Cookie'] = cookie;
+  if (Platform.OS !== 'web') {
+    const cookie = authClient.getCookie();
+    if (cookie) headers['Cookie'] = cookie;
+  }
   // Do NOT set Content-Type — fetch needs to set it with the multipart boundary.
 
   const res = await fetch(`${env.API_URL}/photos`, {
     method: 'POST',
     headers,
     body: formData,
-    credentials: 'omit',
+    credentials: FETCH_CREDENTIALS,
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -68,6 +94,12 @@ export async function uploadPhoto(opts: UploadPhotoOptions): Promise<UploadedPho
 }
 
 export function photoSource(photoId: string): { uri: string; headers?: Record<string, string> } {
+  // On web the browser sends the auth cookie via its own jar when the
+  // image fetch hits a same-site URL with credentials. On native, attach
+  // the cookie via Image source headers.
+  if (Platform.OS === 'web') {
+    return { uri: `${env.API_URL}/photos/${photoId}` };
+  }
   const cookie = authClient.getCookie();
   const headers: Record<string, string> = {};
   if (cookie) headers['Cookie'] = cookie;
