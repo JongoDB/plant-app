@@ -41,6 +41,10 @@ apps/mobile/*.orig.*
 # Local data (Postgres volumes, uploads)
 data/
 uploads/
+# but the API's hand-curated species library lives at apps/api/src/data/
+# and IS source — keep it tracked.
+!apps/api/src/data/
+!apps/api/src/data/**
 
 # Editor / OS
 .vscode/
