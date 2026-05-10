@@ -1,8 +1,8 @@
 import { createAuthClient } from 'better-auth/react';
 import { expoClient } from '@better-auth/expo/client';
-import * as SecureStore from 'expo-secure-store';
 
 import { env } from '../config/env';
+import { authStorage } from './storage';
 
 /**
  * Mobile auth client. Talks to the API at /api/auth/*.
@@ -23,7 +23,7 @@ export const authClient = createAuthClient({
     expoClient({
       scheme: 'plantapp',
       storagePrefix: 'plantapp',
-      storage: SecureStore,
+      storage: authStorage,
     }),
   ],
 });
