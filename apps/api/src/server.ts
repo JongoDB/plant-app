@@ -2,7 +2,9 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 
 import type { AppEnv } from './config/env.js';
+import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
+import { meRoutes } from './routes/me.js';
 
 /**
  * Build (but do not start) the Fastify server. Splitting this out makes it
@@ -32,9 +34,10 @@ export async function buildServer(env: AppEnv): Promise<FastifyInstance> {
   });
 
   await app.register(healthRoutes);
+  await app.register(authRoutes);
+  await app.register(meRoutes);
 
   // Future slices register here:
-  //   - auth routes (Slice 1, Better Auth)
   //   - plants routes (Slice 2)
   //   - rooti SSE route (Slice 3)
   //   - photo upload (Slice 4)

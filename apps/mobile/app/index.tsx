@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Stack } from 'expo-router';
+import { Link, Stack } from 'expo-router';
 import { branding } from '@plant-app/shared';
 
+import { authClient } from '../src/auth/client';
 import { healthApi } from '../src/api/client';
+import { RequireAuth } from '../src/components/RequireAuth';
+import { Screen } from '../src/components/Screen';
 import { theme } from '../src/theme';
 
 type ApiStatus =
@@ -13,8 +16,30 @@ type ApiStatus =
   | { kind: 'error'; message: string };
 
 export default function HomeScreen() {
-  const [status, setStatus] = useState<ApiStatus>({ kind: 'idle' });
+  return (
+    <RequireAuth>
+      <Stack.Screen
+        options={{
+          title: branding.APP_DISPLAY_NAME,
+          headerRight: () => (
+            <Link href="/settings" asChild>
+              <Pressable style={styles.headerButton} hitSlop={8}>
+                <Text style={styles.headerButtonText}>Settings</Text>
+              </Pressable>
+            </Link>
+          ),
+        }}
+      />
+      <HomeContent />
+    </RequireAuth>
+  );
+}
 
+function HomeContent() {
+  const { data: session } = authClient.useSession();
+  const firstName = session?.user.name?.split(' ')[0] ?? 'friend';
+
+  const [status, setStatus] = useState<ApiStatus>({ kind: 'idle' });
   const check = useCallback(async () => {
     setStatus({ kind: 'loading' });
     try {
@@ -24,29 +49,28 @@ export default function HomeScreen() {
       setStatus({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
     }
   }, []);
-
   useEffect(() => {
     void check();
   }, [check]);
 
   return (
-    <>
-      <Stack.Screen options={{ title: branding.APP_DISPLAY_NAME }} />
-      <View style={styles.container}>
-        <Text style={styles.heading}>{branding.APP_DISPLAY_NAME}</Text>
-        <Text style={styles.tagline}>{branding.APP_TAGLINE}</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.cardLabel}>API status</Text>
-          <Text style={styles.cardValue}>{describeStatus(status)}</Text>
-          <Pressable style={styles.button} onPress={check}>
-            <Text style={styles.buttonText}>Recheck</Text>
-          </Pressable>
-        </View>
-
-        <Text style={styles.footer}>Slice 0 — scaffolding only.</Text>
+    <Screen>
+      <View style={styles.greeting}>
+        <Text style={styles.hello}>Hi {firstName} 🌱</Text>
+        <Text style={styles.hint}>
+          Your plants list will land here in the next slice. For now, just a
+          chance to make sure the app talks to the API.
+        </Text>
       </View>
-    </>
+
+      <View style={styles.card}>
+        <Text style={styles.cardLabel}>API status</Text>
+        <Text style={styles.cardValue}>{describeStatus(status)}</Text>
+        <Pressable style={styles.recheck} onPress={check} hitSlop={6}>
+          <Text style={styles.recheckText}>Recheck</Text>
+        </Pressable>
+      </View>
+    </Screen>
   );
 }
 
@@ -64,20 +88,27 @@ function describeStatus(s: ApiStatus): string {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: theme.spacing.lg,
-    gap: theme.spacing.lg,
-    backgroundColor: theme.colors.background,
+  headerButton: {
+    paddingHorizontal: theme.spacing.sm,
   },
-  heading: {
-    fontSize: theme.fontSize.xxl,
+  headerButtonText: {
+    color: theme.colors.primary,
+    fontSize: theme.fontSize.md,
+    fontWeight: '600',
+  },
+  greeting: {
+    gap: theme.spacing.xs,
+    marginTop: theme.spacing.md,
+  },
+  hello: {
+    fontSize: theme.fontSize.xl,
     fontWeight: '700',
     color: theme.colors.text,
   },
-  tagline: {
+  hint: {
     fontSize: theme.fontSize.md,
     color: theme.colors.textMuted,
+    lineHeight: 22,
   },
   card: {
     padding: theme.spacing.lg,
@@ -85,7 +116,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
-    gap: theme.spacing.sm,
+    gap: theme.spacing.xs,
   },
   cardLabel: {
     fontSize: theme.fontSize.sm,
@@ -98,21 +129,12 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontWeight: '500',
   },
-  button: {
+  recheck: {
     marginTop: theme.spacing.sm,
-    backgroundColor: theme.colors.primary,
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.radii.sm,
     alignSelf: 'flex-start',
   },
-  buttonText: {
-    color: theme.colors.surface,
+  recheckText: {
+    color: theme.colors.primary,
     fontWeight: '600',
-  },
-  footer: {
-    marginTop: 'auto',
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.textMuted,
   },
 });

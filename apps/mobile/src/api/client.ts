@@ -1,8 +1,13 @@
+import { authClient } from '../auth/client';
 import { env } from '../config/env';
 
 /**
- * Tiny fetch wrapper. Grows with each slice (auth headers, error mapping,
- * SSE for Rooti, etc.) but stays a thin layer over fetch — no client lib.
+ * Tiny fetch wrapper. Grows with each slice (SSE for Rooti, etc.) but stays
+ * a thin layer over fetch — no client lib.
+ *
+ * Auth: when the user is signed in, we pull the session cookie from
+ * better-auth's SecureStore-backed storage and attach it as a Cookie header.
+ * `credentials: 'omit'` matches the recommended @better-auth/expo pattern.
  */
 
 export class ApiError extends Error {
@@ -18,12 +23,17 @@ export class ApiError extends Error {
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const url = `${env.API_URL}${path}`;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (body) headers['Content-Type'] = 'application/json';
+
+  const cookie = authClient.getCookie();
+  if (cookie) headers['Cookie'] = cookie;
+
   const res = await fetch(url, {
     method,
-    headers: body
-      ? { 'Content-Type': 'application/json', Accept: 'application/json' }
-      : { Accept: 'application/json' },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
+    credentials: 'omit',
   });
   if (!res.ok) {
     let detail = '';
@@ -53,4 +63,21 @@ export interface HealthResponse {
 
 export const healthApi = {
   ping: () => api.get<HealthResponse>('/health'),
+};
+
+export interface MeResponse {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    emailVerified: boolean;
+    image: string | null;
+    createdAt: string;
+    updatedAt: string;
+  };
+  session: { expiresAt: string };
+}
+
+export const meApi = {
+  get: () => api.get<MeResponse>('/me'),
 };
