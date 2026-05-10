@@ -9,11 +9,25 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.jongodb.plantapp"
+      "bundleIdentifier": "com.jongodb.plantapp",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Plant App uses the microphone for voice messages to Rooti.",
+        "NSSpeechRecognitionUsageDescription": "Plant App uses speech recognition to transcribe what you say to Rooti.",
+        "NSCameraUsageDescription": "Plant App uses the camera to take photos of your plants for identification and Rooti chats.",
+        "NSPhotoLibraryUsageDescription": "Plant App uses your photo library to attach plant photos to Rooti chats and identify plants.",
+        "NSLocationWhenInUseUsageDescription": "Plant App uses your location to fetch local weather, which helps Rooti give better watering advice."
+      }
     },
     "android": {
       "package": "com.jongodb.plantapp",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "bundler": "metro"

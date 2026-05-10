@@ -16,6 +16,7 @@
   "dependencies": {
     "@better-auth/expo": "^1.6.10",
     "@plant-app/shared": "workspace:*",
+    "@react-native-voice/voice": "^3.2.4",
     "better-auth": "^1.6.10",
     "expo": "~55.0.0",
     "expo-constants": "~55.0.0",

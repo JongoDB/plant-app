@@ -18,6 +18,10 @@ import { branding } from '@plant-app/shared';
 import { streamRootiMessage } from '../src/api/rooti';
 import { uploadPhoto } from '../src/api/photos';
 import { RequireAuth } from '../src/components/RequireAuth';
+import {
+  startListening as startSttListening,
+  type SttSession,
+} from '../src/services/stt/voiceStt';
 import { tts } from '../src/services/tts/expoSpeechEngine';
 import { theme } from '../src/theme';
 import {
@@ -69,8 +73,10 @@ function RootiChat() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [speakingId, setSpeakingId] = useState<string | undefined>();
+  const [listening, setListening] = useState(false);
   const conversationIdRef = useRef<string | undefined>(undefined);
   const locationRef = useRef<LatLng | null>(null);
+  const sttSessionRef = useRef<SttSession | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
   const toggleSpeak = useCallback(
@@ -92,12 +98,42 @@ function RootiChat() {
     [speakingId],
   );
 
-  // Stop any in-flight speech when the user navigates away.
+  // Stop any in-flight speech (and any active STT session) when leaving.
   useEffect(() => {
     return () => {
       void tts.stop();
+      void sttSessionRef.current?.stop();
     };
   }, []);
+
+  const startMic = async () => {
+    if (listening || streaming) return;
+    setError(undefined);
+    try {
+      const session = await startSttListening(
+        {
+          onPartial: (text) => setInput(text),
+          onFinal: (text) => setInput(text),
+          onError: (err) => {
+            setError(err.message);
+            setListening(false);
+          },
+        },
+        { locale: 'en-US' },
+      );
+      sttSessionRef.current = session;
+      setListening(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const stopMic = async () => {
+    const session = sttSessionRef.current;
+    sttSessionRef.current = null;
+    setListening(false);
+    if (session) await session.stop();
+  };
 
   // Best-effort location fetch on chat open. We don't block on it — if the
   // user denies, Rooti just answers without weather context.
@@ -296,14 +332,29 @@ function RootiChat() {
               <Text style={styles.attachIcon}>＋</Text>
             )}
           </Pressable>
+          <Pressable
+            style={[
+              styles.attachButton,
+              listening && styles.micActive,
+              streaming && styles.disabled,
+            ]}
+            onPressIn={() => void startMic()}
+            onPressOut={() => void stopMic()}
+            disabled={streaming}
+            hitSlop={6}
+          >
+            <Text style={[styles.attachIcon, listening && styles.micActiveIcon]}>🎤</Text>
+          </Pressable>
           <TextInput
             style={styles.input}
             value={input}
             onChangeText={setInput}
-            placeholder={`Ask ${branding.ASSISTANT_NAME}…`}
+            placeholder={
+              listening ? 'Listening…' : `Ask ${branding.ASSISTANT_NAME}…`
+            }
             placeholderTextColor={theme.colors.textMuted}
             multiline
-            editable={!streaming}
+            editable={!streaming && !listening}
             onSubmitEditing={send}
             blurOnSubmit
           />
@@ -564,6 +615,13 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: theme.colors.primary,
     lineHeight: 22,
+  },
+  micActive: {
+    backgroundColor: theme.colors.danger,
+    borderColor: theme.colors.danger,
+  },
+  micActiveIcon: {
+    color: theme.colors.surface,
   },
   input: {
     flex: 1,
