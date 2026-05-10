@@ -6,6 +6,7 @@ import type {
   RootiContentBlock,
   RootiMessage,
   RootiRole,
+  StorageProvider,
 } from '@plant-app/shared';
 
 import { getDb } from '../db/client.js';
@@ -103,26 +104,38 @@ function rowToRootiMessage(row: typeof rootiMessages.$inferSelect): RootiMessage
 // Translation: stored RootiMessage[] -> wire LlmMessage[] for Claude
 // ---------------------------------------------------------------------------
 
-export function toLlmMessages(messages: RootiMessage[]): LlmMessage[] {
-  return messages.map((msg) => {
-    // Stored 'tool' role becomes a 'user' role on the wire (Anthropic's
-    // tool_result blocks always live in user messages).
-    const role: 'user' | 'assistant' = msg.role === 'assistant' ? 'assistant' : 'user';
-    return {
-      role,
-      content: msg.content.map(toLlmContent),
-    };
-  });
+/**
+ * Async because image blocks need their bytes loaded from storage and
+ * base64-encoded inline. Anthropic's API only accepts inline image data on
+ * the wire, so the storage round-trip happens here.
+ */
+export async function toLlmMessages(
+  messages: RootiMessage[],
+  storage: StorageProvider,
+): Promise<LlmMessage[]> {
+  return Promise.all(
+    messages.map(async (msg) => {
+      // Stored 'tool' role becomes a 'user' role on the wire (Anthropic's
+      // tool_result blocks always live in user messages).
+      const role: 'user' | 'assistant' = msg.role === 'assistant' ? 'assistant' : 'user';
+      const content = await Promise.all(msg.content.map((b) => toLlmContent(b, storage)));
+      return { role, content };
+    }),
+  );
 }
 
-function toLlmContent(block: RootiContentBlock): LlmContentBlock {
+async function toLlmContent(
+  block: RootiContentBlock,
+  storage: StorageProvider,
+): Promise<LlmContentBlock> {
   switch (block.type) {
     case 'text':
       return { type: 'text', text: block.text };
-    case 'image':
-      // Photos land in Slice 4; this branch is unreachable today but the
-      // type system requires us to handle it.
-      throw new Error('Image content blocks are not supported yet (Slice 4).');
+    case 'image': {
+      const bytes = await storage.get(block.storageKey);
+      const base64 = Buffer.from(bytes).toString('base64');
+      return { type: 'image', mediaType: block.mimeType, base64Data: base64 };
+    }
     case 'tool_use':
       return {
         type: 'tool_use',

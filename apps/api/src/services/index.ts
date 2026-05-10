@@ -27,7 +27,7 @@ import { StubTextToSpeechEngine } from './ai/tts/stubTts.js';
 import { StubOnDeviceVisionEngine } from './ai/vision/stubVision.js';
 import { StubPlantIdProvider } from './providers/plantId/stubPlantId.js';
 import { StubWeatherProvider } from './providers/weather/stubWeather.js';
-import { StubStorageProvider } from './providers/storage/stubStorage.js';
+import { LocalFsStorageProvider } from './providers/storage/localFsStorage.js';
 import { StubEmailProvider } from './providers/email/stubEmail.js';
 import { StubPushProvider } from './providers/push/stubPush.js';
 
@@ -62,7 +62,10 @@ export function buildServices(env: AppEnv): Services {
     vision: new StubOnDeviceVisionEngine(),
     plantId: new StubPlantIdProvider(),
     weather: new StubWeatherProvider(),
-    storage: new StubStorageProvider(),
+    storage: new LocalFsStorageProvider({
+      rootDir: env.STORAGE_DIR,
+      publicBase: env.STORAGE_PUBLIC_BASE_URL,
+    }),
     email: new StubEmailProvider(),
     push: new StubPushProvider(),
   };

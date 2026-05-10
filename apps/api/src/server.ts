@@ -1,10 +1,12 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 
 import type { AppEnv } from './config/env.js';
 import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
+import { photosRoutes } from './routes/photos.js';
 import { plantsRoutes } from './routes/plants.js';
 import { rootiRoutes } from './routes/rooti.js';
 import { buildServices } from './services/index.js';
@@ -35,6 +37,9 @@ export async function buildServer(env: AppEnv): Promise<FastifyInstance> {
     origin: true,
     credentials: true,
   });
+  await app.register(multipart, {
+    limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  });
 
   const services = buildServices(env);
 
@@ -42,6 +47,7 @@ export async function buildServer(env: AppEnv): Promise<FastifyInstance> {
   await app.register(authRoutes);
   await app.register(meRoutes);
   await app.register(plantsRoutes);
+  await app.register(photosRoutes, { services });
   await app.register(rootiRoutes, { services });
 
   // Future slices register here:

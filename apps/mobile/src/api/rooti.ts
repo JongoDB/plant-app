@@ -13,6 +13,8 @@ export interface RootiStreamOptions {
   conversationId?: string;
   anchorPlantId?: string;
   text: string;
+  /** IDs of already-uploaded photos to attach to this turn. */
+  photoIds?: string[];
   onConversation?: (id: string) => void;
   onTextDelta?: (text: string) => void;
   onToolUseStart?: (id: string, name: string) => void;
@@ -38,6 +40,7 @@ export async function streamRootiMessage(opts: RootiStreamOptions): Promise<void
       conversationId: opts.conversationId,
       anchorPlantId: opts.anchorPlantId,
       text: opts.text,
+      ...(opts.photoIds && opts.photoIds.length > 0 ? { photoIds: opts.photoIds } : {}),
     }),
     credentials: 'omit',
     signal: opts.signal,

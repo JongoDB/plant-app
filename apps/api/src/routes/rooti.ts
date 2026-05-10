@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   ROOTI_SYSTEM_PROMPT,
   ROOTI_TOOL_DEFINITIONS,
@@ -9,6 +10,8 @@ import {
 } from '@plant-app/shared';
 
 import { getSession } from '../auth/requireSession.js';
+import { getDb } from '../db/client.js';
+import { photos } from '../db/schema.js';
 import { rootiToolHandlers } from '../rooti/handlers.js';
 import { loadRootiContext } from '../rooti/context.js';
 import {
@@ -22,13 +25,14 @@ import type { Services } from '../services/index.js';
 /**
  * POST /rooti/messages — Server-Sent Events stream of one Rooti turn.
  *
- * Body: { conversationId?, anchorPlantId?, text }
+ * Body: { conversationId?, anchorPlantId?, text, photoIds? }
  *
  * The endpoint:
  *  1. Resolves (or creates) the conversation for the signed-in user.
  *  2. Loads context (anchor plant + recent care + recent plants).
- *  3. Appends the user's message.
- *  4. Streams Claude's reply, running tools server-side and feeding
+ *  3. Validates and attaches any photoIds (verifying ownership).
+ *  4. Appends the user's message — image blocks first, then context, then text.
+ *  5. Streams Claude's reply, running tools server-side and feeding
  *     results back until Claude stops calling tools.
  *
  * SSE events emitted (one JSON payload per event):
@@ -46,6 +50,7 @@ const bodySchema = z.object({
   conversationId: z.uuid().optional(),
   anchorPlantId: z.uuid().optional(),
   text: z.string().trim().min(1).max(8000),
+  photoIds: z.array(z.uuid()).max(4).optional(),
 });
 
 export async function rootiRoutes(
@@ -93,11 +98,50 @@ export async function rootiRoutes(
       });
       send('conversation', { id: conversationId });
 
-      // Append the user's text. Per-turn context is regenerated each call
-      // and prepended to the user's text as a system note inside the user
-      // turn, so it's present in the on-the-wire prefix exactly once.
+      // Resolve any attached photos: verify ownership and pull the storage
+      // key + mime type so we can persist them as image content blocks.
+      // Storing only the key (not the bytes) means re-loads on each turn
+      // pull from disk fresh — Anthropic's prompt cache absorbs that.
+      const attachedImages: Array<{ storageKey: string; mimeType: string }> = [];
+      if (input.photoIds && input.photoIds.length > 0) {
+        const db = getDb();
+        const rows = await db
+          .select({ id: photos.id, storageKey: photos.storageKey })
+          .from(photos)
+          .where(and(inArray(photos.id, input.photoIds), eq(photos.userId, userId)));
+        const byId = new Map(rows.map((r) => [r.id, r]));
+        for (const id of input.photoIds) {
+          const row = byId.get(id);
+          if (!row) {
+            send('error', { message: `Photo ${id} is not in your collection.` });
+            send('done', {});
+            raw.end();
+            return;
+          }
+          const ext = row.storageKey.split('.').pop()?.toLowerCase() ?? '';
+          const mimeType =
+            ext === 'png'
+              ? 'image/png'
+              : ext === 'webp'
+                ? 'image/webp'
+                : 'image/jpeg';
+          attachedImages.push({ storageKey: row.storageKey, mimeType });
+        }
+      }
+
+      // Build the user message: image blocks first (good for Claude's
+      // attention), then context, then text. Per-turn context is
+      // regenerated each call and stored once on this turn — so the wire
+      // prefix accumulates context for every turn the user has had.
       const ctx = await loadRootiContext({ userId, anchorPlantId: input.anchorPlantId });
       const userContent: RootiContentBlock[] = [];
+      for (const img of attachedImages) {
+        userContent.push({
+          type: 'image',
+          storageKey: img.storageKey,
+          mimeType: img.mimeType,
+        });
+      }
       if (ctx.text) {
         userContent.push({
           type: 'text',
@@ -112,6 +156,7 @@ export async function rootiRoutes(
       });
 
       const llm = opts.services.llm;
+      const storage = opts.services.storage;
       const tools = ROOTI_TOOL_DEFINITIONS;
 
       // Tool-use loop. Each iteration is one Claude turn; if Claude asks
@@ -119,7 +164,7 @@ export async function rootiRoutes(
       const MAX_TURNS = 6;
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         if (aborted) break;
-        const messages = toLlmMessages(await loadMessages(conversationId));
+        const messages = await toLlmMessages(await loadMessages(conversationId), storage);
         const accumText: string[] = [];
         const toolUses = new Map<string, { id: string; name: string; inputJson: string }>();
         let stopReason: string | undefined;

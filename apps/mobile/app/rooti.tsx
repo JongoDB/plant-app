@@ -1,7 +1,9 @@
 import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,8 +16,14 @@ import { Stack, useLocalSearchParams } from 'expo-router';
 import { branding } from '@plant-app/shared';
 
 import { streamRootiMessage } from '../src/api/rooti';
+import { uploadPhoto } from '../src/api/photos';
 import { RequireAuth } from '../src/components/RequireAuth';
 import { theme } from '../src/theme';
+import {
+  pickFromCamera,
+  pickFromLibrary,
+  type PickedImage,
+} from '../src/utils/imagePicker';
 
 type ToolEvent =
   | { kind: 'pending'; id: string; name: string }
@@ -27,8 +35,15 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   text: string;
   tools: ToolEvent[];
-  /** True while the assistant message is still streaming. */
+  /** Local URI for an attached image (user messages only, just-attached). */
+  photoLocalUri?: string;
+  /** True while an assistant message is still streaming. */
   pending?: boolean;
+}
+
+interface PendingPhoto {
+  photoId: string;
+  localUri: string;
 }
 
 export default function RootiScreen() {
@@ -47,28 +62,67 @@ function RootiChat() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [pendingPhoto, setPendingPhoto] = useState<PendingPhoto | null>(null);
+  const [attaching, setAttaching] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const conversationIdRef = useRef<string | undefined>(undefined);
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
-  const headerTitle = plantName ? `${branding.ASSISTANT_NAME} · ${plantName}` : branding.ASSISTANT_NAME;
+  const headerTitle = plantName
+    ? `${branding.ASSISTANT_NAME} · ${plantName}`
+    : branding.ASSISTANT_NAME;
 
   const scrollToEnd = useCallback(() => {
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, []);
 
+  const attach = useCallback(
+    async (picker: () => Promise<PickedImage | null>) => {
+      setError(undefined);
+      setAttaching(true);
+      try {
+        const picked = await picker();
+        if (!picked) return;
+        const uploaded = await uploadPhoto({
+          uri: picked.uri,
+          mimeType: picked.mimeType,
+          width: picked.width,
+          height: picked.height,
+          plantId,
+        });
+        setPendingPhoto({ photoId: uploaded.id, localUri: picked.uri });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setAttaching(false);
+      }
+    },
+    [plantId],
+  );
+
+  const onAttachPress = () => {
+    Alert.alert('Attach a photo', undefined, [
+      { text: 'Take photo', onPress: () => void attach(pickFromCamera) },
+      { text: 'Choose from library', onPress: () => void attach(pickFromLibrary) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const send = useCallback(async () => {
     const text = input.trim();
-    if (!text || streaming) return;
+    if ((!text && !pendingPhoto) || streaming) return;
     setError(undefined);
     setInput('');
+    const photoToSend = pendingPhoto;
+    setPendingPhoto(null);
 
     const userMsg: ChatMessage = {
       id: `u-${Date.now()}`,
       role: 'user',
-      text,
+      text: text || (photoToSend ? '(photo)' : ''),
       tools: [],
+      ...(photoToSend ? { photoLocalUri: photoToSend.localUri } : {}),
     };
     const assistantId = `a-${Date.now()}`;
     const assistantMsg: ChatMessage = {
@@ -90,7 +144,8 @@ function RootiChat() {
       await streamRootiMessage({
         conversationId: conversationIdRef.current,
         anchorPlantId: plantId,
-        text,
+        text: text || 'Take a look at this photo.',
+        photoIds: photoToSend ? [photoToSend.photoId] : undefined,
         onConversation: (id) => {
           conversationIdRef.current = id;
         },
@@ -135,7 +190,9 @@ function RootiChat() {
       setStreaming(false);
       scrollToEnd();
     }
-  }, [input, streaming, plantId, scrollToEnd]);
+  }, [input, pendingPhoto, streaming, plantId, scrollToEnd]);
+
+  const sendDisabled = (!input.trim() && !pendingPhoto) || streaming;
 
   return (
     <>
@@ -156,8 +213,8 @@ function RootiChat() {
               <Text style={styles.emptyTitle}>Hi, I'm {branding.ASSISTANT_NAME}.</Text>
               <Text style={styles.emptyHint}>
                 {plantName
-                  ? `Ask me anything about ${plantName}.`
-                  : 'Ask me anything about your plants.'}
+                  ? `Ask me anything about ${plantName}, or attach a photo for a closer look.`
+                  : 'Ask me anything about your plants, or attach a photo for a closer look.'}
               </Text>
             </View>
           }
@@ -166,7 +223,33 @@ function RootiChat() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
+        {pendingPhoto ? (
+          <View style={styles.pendingBar}>
+            <Image source={{ uri: pendingPhoto.localUri }} style={styles.pendingThumb} />
+            <Text style={styles.pendingLabel}>Photo ready to send</Text>
+            <Pressable
+              hitSlop={8}
+              onPress={() => setPendingPhoto(null)}
+              style={styles.pendingClose}
+            >
+              <Text style={styles.pendingCloseText}>✕</Text>
+            </Pressable>
+          </View>
+        ) : null}
+
         <View style={styles.inputBar}>
+          <Pressable
+            style={[styles.attachButton, (attaching || streaming) && styles.disabled]}
+            onPress={onAttachPress}
+            disabled={attaching || streaming}
+            hitSlop={6}
+          >
+            {attaching ? (
+              <ActivityIndicator color={theme.colors.primary} size="small" />
+            ) : (
+              <Text style={styles.attachIcon}>＋</Text>
+            )}
+          </Pressable>
           <TextInput
             style={styles.input}
             value={input}
@@ -179,9 +262,9 @@ function RootiChat() {
             blurOnSubmit
           />
           <Pressable
-            style={[styles.sendButton, (!input.trim() || streaming) && styles.sendButtonDisabled]}
+            style={[styles.sendButton, sendDisabled && styles.disabled]}
             onPress={send}
-            disabled={!input.trim() || streaming}
+            disabled={sendDisabled}
           >
             {streaming ? (
               <ActivityIndicator color={theme.colors.surface} />
@@ -200,6 +283,13 @@ function MessageBubble({ message }: { message: ChatMessage }) {
   return (
     <View style={[styles.bubbleRow, isUser ? styles.bubbleRowRight : styles.bubbleRowLeft]}>
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
+        {message.photoLocalUri ? (
+          <Image
+            source={{ uri: message.photoLocalUri }}
+            style={styles.bubblePhoto}
+            resizeMode="cover"
+          />
+        ) : null}
         {message.tools.map((t) => (
           <ToolCard key={t.id} tool={t} />
         ))}
@@ -319,6 +409,11 @@ const styles = StyleSheet.create({
   bubbleTextUser: {
     color: theme.colors.surface,
   },
+  bubblePhoto: {
+    width: 220,
+    height: 220,
+    borderRadius: theme.radii.md,
+  },
   toolCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -346,6 +441,33 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     flexShrink: 1,
   },
+  pendingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+  },
+  pendingThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: theme.radii.sm,
+  },
+  pendingLabel: {
+    flex: 1,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
+  },
+  pendingClose: {
+    paddingHorizontal: theme.spacing.sm,
+  },
+  pendingCloseText: {
+    color: theme.colors.textMuted,
+    fontSize: theme.fontSize.lg,
+  },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -354,6 +476,21 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
     backgroundColor: theme.colors.background,
+  },
+  attachButton: {
+    width: 44,
+    height: 44,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachIcon: {
+    fontSize: 22,
+    color: theme.colors.primary,
+    lineHeight: 22,
   },
   input: {
     flex: 1,
@@ -376,7 +513,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendButtonDisabled: {
+  disabled: {
     opacity: 0.5,
   },
   sendText: {
