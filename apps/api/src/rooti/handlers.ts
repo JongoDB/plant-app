@@ -17,7 +17,7 @@ import { and, eq } from 'drizzle-orm';
 import type { RootiToolHandlerMap } from '@plant-app/shared';
 
 import { getDb } from '../db/client.js';
-import { careEvents, plants } from '../db/schema.js';
+import { careEvents, plants, reminders } from '../db/schema.js';
 import { identifyPhoto } from '../lib/identifyPhoto.js';
 import type { Services } from '../services/index.js';
 
@@ -98,10 +98,23 @@ export function buildRootiToolHandlers(services: Services): RootiToolHandlerMap 
       return { ok: true, note_event_id: row.id };
     },
 
-    schedule_reminder: async () => {
-      throw new Error(
-        "Reminder scheduling isn't wired up yet — that lands in the care-reminders slice.",
-      );
+    schedule_reminder: async (input, ctx) => {
+      await assertPlantBelongsToUser(input.plant_id, ctx.userId);
+      const db = getDb();
+      const inserted = await db
+        .insert(reminders)
+        .values({
+          userId: ctx.userId,
+          plantId: input.plant_id,
+          kind: input.kind,
+          nextDueAt: new Date(input.next_due_at),
+          intervalDays: input.interval_days,
+          active: true,
+        })
+        .returning();
+      const row = inserted[0];
+      if (!row) throw new Error('Failed to schedule reminder.');
+      return { ok: true, reminder_id: row.id };
     },
 
     identify_plant: async (input, ctx) => {

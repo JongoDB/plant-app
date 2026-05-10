@@ -41,7 +41,12 @@ function SettingsContent() {
         <Text style={styles.email}>{session.user.email}</Text>
       </View>
 
-      <Button title="Sign out" onPress={signOut} variant="secondary" loading={signingOut} />
+      <Button
+        title="All reminders"
+        variant="secondary"
+        onPress={() => router.push('/reminders')}
+      />
+      <Button title="Sign out" onPress={signOut} variant="ghost" loading={signingOut} />
     </Screen>
   );
 }

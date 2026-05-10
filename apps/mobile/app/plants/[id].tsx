@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { branding } from '@plant-app/shared';
-import type { Plant } from '@plant-app/shared';
+import type { Plant, Reminder } from '@plant-app/shared';
 
 import { ApiError, plantsApi } from '../../src/api/client';
+import { remindersApi } from '../../src/api/reminders';
 import { Button } from '../../src/components/Button';
+import { ReminderRow } from '../../src/components/ReminderRow';
 import { RequireAuth } from '../../src/components/RequireAuth';
 import { Screen } from '../../src/components/Screen';
 import { theme } from '../../src/theme';
@@ -29,6 +31,7 @@ function PlantDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [plant, setPlant] = useState<Plant | null>(null);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'not_found' | 'error'>('loading');
   const [error, setError] = useState<string | undefined>();
   const [deleting, setDeleting] = useState(false);
@@ -36,8 +39,9 @@ function PlantDetail() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const p = await plantsApi.get(id);
+      const [p, r] = await Promise.all([plantsApi.get(id), remindersApi.forPlant(id)]);
       setPlant(p);
+      setReminders(r);
       setStatus('ready');
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -52,6 +56,12 @@ function PlantDetail() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const confirmDelete = () => {
     if (!plant) return;
@@ -134,6 +144,17 @@ function PlantDetail() {
           <DetailRow label="Notes" value={plant.notes} />
         </View>
 
+        {reminders.filter((r) => r.active).length > 0 ? (
+          <View style={styles.reminders}>
+            <Text style={styles.sectionLabel}>Reminders</Text>
+            {reminders
+              .filter((r) => r.active)
+              .map((r) => (
+                <ReminderRow key={r.id} reminder={r} onCompleted={load} />
+              ))}
+          </View>
+        ) : null}
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.actions}>
@@ -142,6 +163,16 @@ function PlantDetail() {
             onPress={() =>
               router.push({
                 pathname: '/rooti',
+                params: { plantId: plant.id, plantName: plant.nickname },
+              })
+            }
+          />
+          <Button
+            title="Schedule a reminder"
+            variant="secondary"
+            onPress={() =>
+              router.push({
+                pathname: '/reminders/new',
                 params: { plantId: plant.id, plantName: plant.nickname },
               })
             }
@@ -235,6 +266,17 @@ const styles = StyleSheet.create({
   error: {
     color: theme.colors.danger,
     fontSize: theme.fontSize.sm,
+  },
+  reminders: {
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  sectionLabel: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   actions: {
     gap: theme.spacing.sm,

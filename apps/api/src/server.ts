@@ -9,8 +9,10 @@ import { identifyRoutes } from './routes/identify.js';
 import { meRoutes } from './routes/me.js';
 import { photosRoutes } from './routes/photos.js';
 import { plantsRoutes } from './routes/plants.js';
+import { remindersRoutes } from './routes/reminders.js';
 import { rootiRoutes } from './routes/rooti.js';
 import { buildServices } from './services/index.js';
+import { startReminderScheduler, type ReminderScheduler } from './scheduler/reminders.js';
 
 /**
  * Build (but do not start) the Fastify server. Splitting this out makes it
@@ -50,11 +52,20 @@ export async function buildServer(env: AppEnv): Promise<FastifyInstance> {
   await app.register(plantsRoutes);
   await app.register(photosRoutes, { services });
   await app.register(identifyRoutes, { services });
+  await app.register(remindersRoutes);
   await app.register(rootiRoutes, { services });
 
   // Future slices register here:
-  //   - reminders + push (later)
   //   - weather + watering recs (later)
+  //   - push notifications (when APNs/FCM creds arrive)
+
+  let scheduler: ReminderScheduler | undefined;
+  if (env.NODE_ENV !== 'test') {
+    scheduler = startReminderScheduler({ logger: app.log, services });
+  }
+  app.addHook('onClose', async () => {
+    scheduler?.stop();
+  });
 
   return app;
 }
