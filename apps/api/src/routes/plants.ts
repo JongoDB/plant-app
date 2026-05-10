@@ -258,6 +258,45 @@ export async function plantsRoutes(app: FastifyInstance): Promise<void> {
     return rowToPlant(row);
   });
 
+  // Set the plant's cover photo. Owner-scoped on both sides so a stray
+  // photoId from another plant or another user is rejected.
+  app.post('/plants/:id/cover', async (request, reply) => {
+    const session = await getSession(request);
+    if (!session) return reply.status(401).send({ error: 'unauthorized' });
+
+    const params = idParam.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'invalid_id' });
+    const body = z.object({ photoId: z.uuid() }).safeParse(request.body);
+    if (!body.success) {
+      return reply
+        .status(400)
+        .send({ error: 'validation_failed', issues: body.error.issues });
+    }
+
+    const db = getDb();
+    const photo = await db
+      .select({ id: photos.id })
+      .from(photos)
+      .where(
+        and(
+          eq(photos.id, body.data.photoId),
+          eq(photos.userId, session.user.id),
+          eq(photos.plantId, params.data.id),
+        ),
+      )
+      .limit(1);
+    if (photo.length === 0) return reply.status(404).send({ error: 'photo_not_found' });
+
+    const updated = await db
+      .update(plants)
+      .set({ primaryPhotoId: body.data.photoId })
+      .where(and(eq(plants.id, params.data.id), eq(plants.userId, session.user.id)))
+      .returning();
+    const row = updated[0];
+    if (!row) return reply.status(404).send({ error: 'not_found' });
+    return rowToPlant(row);
+  });
+
   app.delete('/plants/:id', async (request, reply) => {
     const session = await getSession(request);
     if (!session) return reply.status(401).send({ error: 'unauthorized' });

@@ -93,6 +93,27 @@ function PlantDetail() {
     [plant, load],
   );
 
+  const setCover = useCallback(
+    async (photoId: string) => {
+      if (!plant) return;
+      try {
+        const updated = await plantsApi.setCover(plant.id, photoId);
+        setPlant(updated);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [plant],
+  );
+
+  const onPhotoPress = (photoId: string, isCover: boolean) => {
+    if (isCover) return;
+    Alert.alert('Set as cover photo?', 'This photo will appear on the home screen card.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Set cover', onPress: () => void setCover(photoId) },
+    ]);
+  };
+
   const onAddPhotoPress = () => {
     Alert.alert('Add a photo', undefined, [
       { text: 'Take photo', onPress: () => void addPhoto(pickFromCamera) },
@@ -216,12 +237,23 @@ function PlantDetail() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.photoStrip}
             >
-              {photoList.map((p) => (
-                <View key={p.id} style={styles.photoTile}>
-                  <AuthedImage photoId={p.id} style={styles.photoImage} />
-                  <Text style={styles.photoDate}>{relativeDateFromIso(p.takenAt)}</Text>
-                </View>
-              ))}
+              {photoList.map((p) => {
+                const isCover = plant.primaryPhotoId === p.id;
+                return (
+                  <Pressable
+                    key={p.id}
+                    onPress={() => onPhotoPress(p.id, isCover)}
+                    style={styles.photoTile}
+                  >
+                    <AuthedImage photoId={p.id} style={styles.photoImage} />
+                    <Text
+                      style={[styles.photoDate, isCover && styles.photoDateCover]}
+                    >
+                      {isCover ? '★ Cover' : relativeDateFromIso(p.takenAt)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           ) : (
             <Text style={styles.muted}>
@@ -458,6 +490,10 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.xs,
     color: theme.colors.textMuted,
     textAlign: 'center',
+  },
+  photoDateCover: {
+    color: theme.colors.primary,
+    fontWeight: '700',
   },
   muted: {
     fontSize: theme.fontSize.sm,

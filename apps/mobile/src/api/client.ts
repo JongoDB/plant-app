@@ -124,5 +124,7 @@ export const plantsApi = {
   careEvents: (id: string) => api.get<CareEvent[]>(`/plants/${id}/care-events`),
   create: (input: CreatePlantInput) => api.post<Plant>('/plants', input),
   update: (id: string, input: UpdatePlantInput) => api.patch<Plant>(`/plants/${id}`, input),
+  setCover: (id: string, photoId: string) =>
+    api.post<Plant>(`/plants/${id}/cover`, { photoId }),
   remove: (id: string) => api.delete<void>(`/plants/${id}`),
 };
