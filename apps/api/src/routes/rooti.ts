@@ -12,7 +12,7 @@ import {
 import { getSession } from '../auth/requireSession.js';
 import { getDb } from '../db/client.js';
 import { photos } from '../db/schema.js';
-import { rootiToolHandlers } from '../rooti/handlers.js';
+import { buildRootiToolHandlers } from '../rooti/handlers.js';
 import { loadRootiContext } from '../rooti/context.js';
 import {
   appendMessage,
@@ -57,6 +57,8 @@ export async function rootiRoutes(
   app: FastifyInstance,
   opts: { services: Services },
 ): Promise<void> {
+  const toolHandlers = buildRootiToolHandlers(opts.services);
+
   app.post('/rooti/messages', async (request, reply) => {
     const session = await getSession(request);
     if (!session) return reply.status(401).send({ error: 'unauthorized' });
@@ -242,7 +244,7 @@ export async function rootiRoutes(
           ...(input.anchorPlantId ? { anchorPlantId: input.anchorPlantId } : {}),
         };
         for (const tu of toolUses.values()) {
-          const handler = rootiToolHandlers[tu.name as RootiToolName] as
+          const handler = toolHandlers[tu.name as RootiToolName] as
             | ((input: unknown, ctx: RootiToolContext) => Promise<unknown>)
             | undefined;
           if (!handler) {

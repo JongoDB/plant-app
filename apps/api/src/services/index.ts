@@ -25,6 +25,7 @@ import { StubLlmProvider } from './ai/llm/stubLlm.js';
 import { StubSpeechToTextEngine } from './ai/stt/stubStt.js';
 import { StubTextToSpeechEngine } from './ai/tts/stubTts.js';
 import { StubOnDeviceVisionEngine } from './ai/vision/stubVision.js';
+import { PlantNetPlantIdProvider } from './providers/plantId/plantNetPlantId.js';
 import { StubPlantIdProvider } from './providers/plantId/stubPlantId.js';
 import { StubWeatherProvider } from './providers/weather/stubWeather.js';
 import { LocalFsStorageProvider } from './providers/storage/localFsStorage.js';
@@ -60,7 +61,9 @@ export function buildServices(env: AppEnv): Services {
     stt: new StubSpeechToTextEngine(),
     tts: new StubTextToSpeechEngine(),
     vision: new StubOnDeviceVisionEngine(),
-    plantId: new StubPlantIdProvider(),
+    plantId: env.PLANTNET_API_KEY
+      ? new PlantNetPlantIdProvider({ apiKey: env.PLANTNET_API_KEY })
+      : new StubPlantIdProvider(),
     weather: new StubWeatherProvider(),
     storage: new LocalFsStorageProvider({
       rootDir: env.STORAGE_DIR,

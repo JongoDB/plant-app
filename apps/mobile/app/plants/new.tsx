@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import type { LightExposure } from '@plant-app/shared';
 
 import { plantsApi, type CreatePlantInput } from '../../src/api/client';
@@ -30,9 +30,14 @@ export default function NewPlantScreen() {
 
 function NewPlantForm() {
   const router = useRouter();
-  const [nickname, setNickname] = useState('');
-  const [scientificName, setScientificName] = useState('');
-  const [commonName, setCommonName] = useState('');
+  // Identify flow can pre-fill species fields via query params.
+  const params = useLocalSearchParams<{
+    scientificName?: string;
+    commonName?: string;
+  }>();
+  const [nickname, setNickname] = useState(params.commonName ?? '');
+  const [scientificName, setScientificName] = useState(params.scientificName ?? '');
+  const [commonName, setCommonName] = useState(params.commonName ?? '');
   const [locationDescription, setLocationDescription] = useState('');
   const [light, setLight] = useState<LightExposure | undefined>();
   const [acquiredOn, setAcquiredOn] = useState('');

@@ -90,7 +90,19 @@ function PlantsList() {
         </Text>
       </View>
 
-      <Button title="+ Add a plant" onPress={() => router.push('/plants/new')} />
+      <View style={styles.actionRow}>
+        <Button
+          title="+ Add a plant"
+          onPress={() => router.push('/plants/new')}
+          style={styles.actionPrimary}
+        />
+        <Button
+          title="Identify"
+          variant="secondary"
+          onPress={() => router.push('/identify')}
+          style={styles.actionSecondary}
+        />
+      </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -158,6 +170,16 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: theme.fontSize.md,
     color: theme.colors.textMuted,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  actionPrimary: {
+    flex: 2,
+  },
+  actionSecondary: {
+    flex: 1,
   },
   error: {
     color: theme.colors.danger,

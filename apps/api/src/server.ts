@@ -5,6 +5,7 @@ import multipart from '@fastify/multipart';
 import type { AppEnv } from './config/env.js';
 import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
+import { identifyRoutes } from './routes/identify.js';
 import { meRoutes } from './routes/me.js';
 import { photosRoutes } from './routes/photos.js';
 import { plantsRoutes } from './routes/plants.js';
@@ -48,11 +49,12 @@ export async function buildServer(env: AppEnv): Promise<FastifyInstance> {
   await app.register(meRoutes);
   await app.register(plantsRoutes);
   await app.register(photosRoutes, { services });
+  await app.register(identifyRoutes, { services });
   await app.register(rootiRoutes, { services });
 
   // Future slices register here:
-  //   - photo upload (Slice 4)
   //   - reminders + push (later)
+  //   - weather + watering recs (later)
 
   return app;
 }
