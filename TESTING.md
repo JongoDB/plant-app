@@ -110,6 +110,21 @@ just navigate to the URL it prints (e.g. `http://localhost:8081`).
   cover shows on the home screen card.
 - ✅ **Care log** per plant — every reminder you complete (or care event
   Rooti logs) appears as a row.
+- ✅ **Care status hint** on plant detail — combines the species'
+  recommended water interval with your last logged watering. Shows
+  "Probably ready", "Likely overdue", or stays muted.
+- ✅ **Water-status pill** on home cards — small "💧 due" / "💧 overdue"
+  badge when the species library has an interval AND there's a logged
+  watering event. Silent otherwise.
+- ✅ **Walkthrough mode** — home → "Walk through my plants". Pick plants,
+  take/pick a photo of each in turn, and Rooti reviews all of them
+  together with a per-plant "Status / Recommendation" report.
+- ✅ **Chat history** — Rooti header → "History". List of past chats
+  with previews; tap to resume, long-press or X to delete.
+- ✅ **Garden journal** — Settings → "Garden journal". Chronological feed
+  of every photo and care event you've logged, grouped by day.
+- ✅ **Toxicity warning** — plant detail shows a "⚠️ Toxic to pets/humans"
+  chip when the species library has it flagged.
 - ⏸ Smart camera — shows the "open on a device" message; this one's
   native-only.
 - ⏸ Voice mode — the toggle appears in the Rooti header, but TTS support

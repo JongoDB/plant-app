@@ -210,6 +210,19 @@ function PlantDetail() {
           {plant.scientificName ? (
             <Text style={styles.scientificName}>{plant.scientificName}</Text>
           ) : null}
+          {species && (species.toxicToPets || species.toxicToHumans) ? (
+            <View style={styles.toxicChip}>
+              <Text style={styles.toxicChipText}>
+                ⚠️ Toxic to{' '}
+                {[
+                  species.toxicToPets ? 'pets' : null,
+                  species.toxicToHumans ? 'humans' : null,
+                ]
+                  .filter(Boolean)
+                  .join(' and ')}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.card}>
@@ -499,6 +512,21 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.textMuted,
     fontStyle: 'italic',
+  },
+  toxicChip: {
+    alignSelf: 'flex-start',
+    marginTop: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 4,
+    borderRadius: theme.radii.pill,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.danger,
+  },
+  toxicChipText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.danger,
+    fontWeight: '700',
   },
   card: {
     backgroundColor: theme.colors.surface,
