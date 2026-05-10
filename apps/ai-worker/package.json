@@ -1,0 +1,10 @@
+{
+  "name": "@plant-app/ai-worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reserved workspace for native macOS AI workers (whisper.cpp, Piper TTS, MLX). Empty until we port to the MacBook.",
+  "scripts": {
+    "typecheck": "echo '(no source yet)'",
+    "lint": "echo '(no source yet)'"
+  }
+}

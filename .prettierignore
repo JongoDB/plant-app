@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.expo/
+.turbo/
+*.tsbuildinfo
+data/
+uploads/
+pnpm-lock.yaml
+apps/mobile/ios/
+apps/mobile/android/

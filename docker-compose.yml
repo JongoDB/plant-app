@@ -1,0 +1,60 @@
+## =============================================================================
+## plant-app — local dev compose
+##
+## Brings up Postgres only. The API runs natively via `pnpm dev:api` so its
+## logs are easy to read and reload is fast. Native AI workers (apps/ai-worker)
+## also run outside Docker — see that package's README for why.
+##
+## On the MacBook deploy target:
+##  - Postgres still runs in Docker (multi-arch image; Apple Silicon supported).
+##  - The Caddy service slot below gets uncommented for HTTPS via Tailscale.
+##  - The API can run inside Docker too, or natively under launchd. Either way.
+## =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-plant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plant_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-plant_app}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - ${DATA_DIR:-./data}/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-plant} -d ${POSTGRES_DB:-plant_app}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ## --- MacBook deploy slot: uncomment when you're ready to expose the API ---
+  ## Caddy gives us HTTPS with zero config when paired with Tailscale's cert
+  ## resolver (or you can swap to Let's Encrypt if exposing publicly).
+  ##
+  ## api:
+  ##   build:
+  ##     context: .
+  ##     dockerfile: apps/api/Dockerfile
+  ##   restart: unless-stopped
+  ##   env_file: ./apps/api/.env
+  ##   depends_on:
+  ##     postgres:
+  ##       condition: service_healthy
+  ##   volumes:
+  ##     - ${DATA_DIR:-./data}/storage:/app/data/storage
+  ##
+  ## caddy:
+  ##   image: caddy:2-alpine
+  ##   restart: unless-stopped
+  ##   ports:
+  ##     - '443:443'
+  ##     - '80:80'
+  ##   volumes:
+  ##     - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+  ##     - ${DATA_DIR:-./data}/caddy:/data
+  ##     - ${DATA_DIR:-./data}/caddy-config:/config
+  ##   depends_on:
+  ##     - api
