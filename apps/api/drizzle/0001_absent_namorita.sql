@@ -1,0 +1,1 @@
+ALTER TABLE "plants" ALTER COLUMN "acquired_on" SET DATA TYPE date;

@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   boolean,
+  date,
   pgEnum,
 } from 'drizzle-orm/pg-core';
 
@@ -92,7 +93,7 @@ export const plants = pgTable('plants', {
   commonName: text('common_name'),
   homeLocationDescription: text('home_location_description'),
   homeLocationLight: lightExposureEnum('home_location_light'),
-  acquiredOn: timestamp('acquired_on', { mode: 'string', withTimezone: false }),
+  acquiredOn: date('acquired_on'),
   notes: text('notes'),
   primaryPhotoId: uuid('primary_photo_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

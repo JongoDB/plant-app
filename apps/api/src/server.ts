@@ -5,6 +5,7 @@ import type { AppEnv } from './config/env.js';
 import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
+import { plantsRoutes } from './routes/plants.js';
 
 /**
  * Build (but do not start) the Fastify server. Splitting this out makes it
@@ -36,9 +37,9 @@ export async function buildServer(env: AppEnv): Promise<FastifyInstance> {
   await app.register(healthRoutes);
   await app.register(authRoutes);
   await app.register(meRoutes);
+  await app.register(plantsRoutes);
 
   // Future slices register here:
-  //   - plants routes (Slice 2)
   //   - rooti SSE route (Slice 3)
   //   - photo upload (Slice 4)
   //   - reminders + push (later)

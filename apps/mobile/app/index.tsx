@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Link, Stack } from 'expo-router';
+import {
+  FlatList,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { Link, Stack, useFocusEffect, useRouter } from 'expo-router';
 import { branding } from '@plant-app/shared';
+import type { Plant } from '@plant-app/shared';
 
+import { plantsApi } from '../src/api/client';
 import { authClient } from '../src/auth/client';
-import { healthApi } from '../src/api/client';
+import { Button } from '../src/components/Button';
 import { RequireAuth } from '../src/components/RequireAuth';
 import { Screen } from '../src/components/Screen';
 import { theme } from '../src/theme';
-
-type ApiStatus =
-  | { kind: 'idle' }
-  | { kind: 'loading' }
-  | { kind: 'ok'; time: string }
-  | { kind: 'error'; message: string };
 
 export default function HomeScreen() {
   return (
@@ -30,64 +33,111 @@ export default function HomeScreen() {
           ),
         }}
       />
-      <HomeContent />
+      <PlantsList />
     </RequireAuth>
   );
 }
 
-function HomeContent() {
+function PlantsList() {
+  const router = useRouter();
   const { data: session } = authClient.useSession();
   const firstName = session?.user.name?.split(' ')[0] ?? 'friend';
 
-  const [status, setStatus] = useState<ApiStatus>({ kind: 'idle' });
-  const check = useCallback(async () => {
-    setStatus({ kind: 'loading' });
+  const [plants, setPlants] = useState<Plant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  const load = useCallback(async () => {
     try {
-      const res = await healthApi.ping();
-      setStatus({ kind: 'ok', time: res.time });
+      const list = await plantsApi.list();
+      setPlants(list);
+      setError(undefined);
     } catch (err) {
-      setStatus({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
+      setError(err instanceof Error ? err.message : String(err));
     }
   }, []);
+
+  // initial load
   useEffect(() => {
-    void check();
-  }, [check]);
+    void (async () => {
+      await load();
+      setLoading(false);
+    })();
+  }, [load]);
+
+  // refresh on screen focus (e.g. after returning from add or detail)
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   return (
-    <Screen>
+    <Screen style={styles.screen}>
       <View style={styles.greeting}>
         <Text style={styles.hello}>Hi {firstName} 🌱</Text>
-        <Text style={styles.hint}>
-          Your plants list will land here in the next slice. For now, just a
-          chance to make sure the app talks to the API.
+        <Text style={styles.subtitle}>
+          {plants.length === 0
+            ? "Let's add your first plant."
+            : `${plants.length} ${plants.length === 1 ? 'plant' : 'plants'} in your collection.`}
         </Text>
       </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>API status</Text>
-        <Text style={styles.cardValue}>{describeStatus(status)}</Text>
-        <Pressable style={styles.recheck} onPress={check} hitSlop={6}>
-          <Text style={styles.recheckText}>Recheck</Text>
-        </Pressable>
-      </View>
+      <Button title="+ Add a plant" onPress={() => router.push('/plants/new')} />
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+
+      <FlatList
+        data={plants}
+        keyExtractor={(p) => p.id}
+        renderItem={({ item }) => <PlantCard plant={item} />}
+        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.primary}
+          />
+        }
+        ListEmptyComponent={
+          loading ? null : (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No plants yet.</Text>
+              <Text style={styles.emptyHint}>Tap "Add a plant" above to get started.</Text>
+            </View>
+          )
+        }
+      />
     </Screen>
   );
 }
 
-function describeStatus(s: ApiStatus): string {
-  switch (s.kind) {
-    case 'idle':
-      return 'idle';
-    case 'loading':
-      return 'checking…';
-    case 'ok':
-      return `ok (${s.time})`;
-    case 'error':
-      return `error: ${s.message}`;
-  }
+function PlantCard({ plant }: { plant: Plant }) {
+  return (
+    <Link href={`/plants/${plant.id}`} asChild>
+      <Pressable style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
+        <Text style={styles.cardName}>{plant.nickname}</Text>
+        {plant.commonName ? <Text style={styles.cardSub}>{plant.commonName}</Text> : null}
+        {plant.homeLocation ? (
+          <Text style={styles.cardSub}>📍 {plant.homeLocation.description}</Text>
+        ) : null}
+      </Pressable>
+    </Link>
+  );
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    paddingBottom: 0,
+    flex: 1,
+  },
   headerButton: {
     paddingHorizontal: theme.spacing.sm,
   },
@@ -105,10 +155,32 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.text,
   },
-  hint: {
+  subtitle: {
     fontSize: theme.fontSize.md,
     color: theme.colors.textMuted,
-    lineHeight: 22,
+  },
+  error: {
+    color: theme.colors.danger,
+    fontSize: theme.fontSize.sm,
+  },
+  list: {
+    gap: theme.spacing.md,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.lg,
+  },
+  empty: {
+    paddingVertical: theme.spacing.xl,
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  emptyText: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  emptyHint: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
   },
   card: {
     padding: theme.spacing.lg,
@@ -118,23 +190,16 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     gap: theme.spacing.xs,
   },
-  cardLabel: {
+  cardPressed: {
+    opacity: 0.85,
+  },
+  cardName: {
+    fontSize: theme.fontSize.lg,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  cardSub: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  cardValue: {
-    fontSize: theme.fontSize.lg,
-    color: theme.colors.text,
-    fontWeight: '500',
-  },
-  recheck: {
-    marginTop: theme.spacing.sm,
-    alignSelf: 'flex-start',
-  },
-  recheckText: {
-    color: theme.colors.primary,
-    fontWeight: '600',
   },
 });

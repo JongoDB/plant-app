@@ -1,3 +1,5 @@
+import type { HomeLocation, Plant } from '@plant-app/shared';
+
 import { authClient } from '../auth/client';
 import { env } from '../config/env';
 
@@ -80,4 +82,20 @@ export interface MeResponse {
 
 export const meApi = {
   get: () => api.get<MeResponse>('/me'),
+};
+
+export interface CreatePlantInput {
+  nickname: string;
+  scientificName?: string;
+  commonName?: string;
+  homeLocation?: HomeLocation;
+  acquiredOn?: string;
+  notes?: string;
+}
+
+export const plantsApi = {
+  list: () => api.get<Plant[]>('/plants'),
+  get: (id: string) => api.get<Plant>(`/plants/${id}`),
+  create: (input: CreatePlantInput) => api.post<Plant>('/plants', input),
+  remove: (id: string) => api.delete<void>(`/plants/${id}`),
 };
