@@ -37,7 +37,12 @@ const schema = z.object({
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
 
+  // Either of these authenticates the Anthropic SDK. AUTH_TOKEN is the
+  // OAuth path used by `claude setup-token` (Pro/Max subscription); API_KEY
+  // is the billed key path. Provide at least one before Slice 3 endpoints
+  // become functional.
   ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_AUTH_TOKEN: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
 
   PLANTNET_API_KEY: z.string().optional(),

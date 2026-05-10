@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { branding } from '@plant-app/shared';
 import type { Plant } from '@plant-app/shared';
 
 import { ApiError, plantsApi } from '../../src/api/client';
@@ -136,6 +137,15 @@ function PlantDetail() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.actions}>
+          <Button
+            title={`Ask ${branding.ASSISTANT_NAME} about this plant`}
+            onPress={() =>
+              router.push({
+                pathname: '/rooti',
+                params: { plantId: plant.id, plantName: plant.nickname },
+              })
+            }
+          />
           <Button title="Edit" variant="secondary" disabled subtitle="Coming soon" />
           <Button
             title="Delete plant"

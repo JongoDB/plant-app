@@ -20,6 +20,7 @@ import type {
 } from '@plant-app/shared';
 
 import type { AppEnv } from '../config/env.js';
+import { AnthropicLlmProvider } from './ai/llm/anthropicLlm.js';
 import { StubLlmProvider } from './ai/llm/stubLlm.js';
 import { StubSpeechToTextEngine } from './ai/stt/stubStt.js';
 import { StubTextToSpeechEngine } from './ai/tts/stubTts.js';
@@ -42,11 +43,20 @@ export interface Services {
   push: PushProvider;
 }
 
-export function buildServices(_env: AppEnv): Services {
-  // Slice 0: every implementation is a stub. Real impls land in their
-  // respective slices — see each stub's banner comment for which.
+export function buildServices(env: AppEnv): Services {
+  // The LLM goes live as soon as either an OAuth token or an API key is set.
+  // Without one, fall back to a stub that throws clearly when invoked.
+  const llm =
+    env.ANTHROPIC_AUTH_TOKEN || env.ANTHROPIC_API_KEY
+      ? new AnthropicLlmProvider({
+          authToken: env.ANTHROPIC_AUTH_TOKEN,
+          apiKey: env.ANTHROPIC_API_KEY,
+          defaultModel: env.ANTHROPIC_MODEL,
+        })
+      : new StubLlmProvider();
+
   return {
-    llm: new StubLlmProvider(),
+    llm,
     stt: new StubSpeechToTextEngine(),
     tts: new StubTextToSpeechEngine(),
     vision: new StubOnDeviceVisionEngine(),

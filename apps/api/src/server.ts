@@ -6,6 +6,8 @@ import { authRoutes } from './routes/auth.js';
 import { healthRoutes } from './routes/health.js';
 import { meRoutes } from './routes/me.js';
 import { plantsRoutes } from './routes/plants.js';
+import { rootiRoutes } from './routes/rooti.js';
+import { buildServices } from './services/index.js';
 
 /**
  * Build (but do not start) the Fastify server. Splitting this out makes it
@@ -34,13 +36,15 @@ export async function buildServer(env: AppEnv): Promise<FastifyInstance> {
     credentials: true,
   });
 
+  const services = buildServices(env);
+
   await app.register(healthRoutes);
   await app.register(authRoutes);
   await app.register(meRoutes);
   await app.register(plantsRoutes);
+  await app.register(rootiRoutes, { services });
 
   // Future slices register here:
-  //   - rooti SSE route (Slice 3)
   //   - photo upload (Slice 4)
   //   - reminders + push (later)
 
