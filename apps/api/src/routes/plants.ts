@@ -333,6 +333,93 @@ export async function plantsRoutes(app: FastifyInstance): Promise<void> {
     return rowToPlant(row);
   });
 
+  // GET /journal — a single mixed feed of recent photos + care events
+  // across all of the user's plants. Used by the Garden Journal screen
+  // for "what have I been up to" browsing.
+  app.get('/journal', async (request, reply) => {
+    const session = await getSession(request);
+    if (!session) return reply.status(401).send({ error: 'unauthorized' });
+
+    const db = getDb();
+    const [photoRows, careRows] = await Promise.all([
+      db
+        .select({
+          id: photos.id,
+          plantId: photos.plantId,
+          plantNickname: plants.nickname,
+          takenAt: photos.takenAt,
+          mode: photos.mode,
+        })
+        .from(photos)
+        .leftJoin(plants, eq(plants.id, photos.plantId))
+        .where(eq(photos.userId, session.user.id))
+        .orderBy(desc(photos.takenAt))
+        .limit(100),
+      db
+        .select({
+          id: careEvents.id,
+          plantId: careEvents.plantId,
+          plantNickname: plants.nickname,
+          occurredAt: careEvents.occurredAt,
+          kind: careEvents.kind,
+          notes: careEvents.notes,
+        })
+        .from(careEvents)
+        .leftJoin(plants, eq(plants.id, careEvents.plantId))
+        .where(eq(careEvents.userId, session.user.id))
+        .orderBy(desc(careEvents.occurredAt))
+        .limit(100),
+    ]);
+
+    type JournalEntry =
+      | {
+          kind: 'photo';
+          id: string;
+          plantId: string | null;
+          plantNickname: string | null;
+          takenAt: string;
+          mode: 'health' | 'growth' | 'general' | null;
+        }
+      | {
+          kind: 'care';
+          id: string;
+          plantId: string;
+          plantNickname: string | null;
+          occurredAt: string;
+          careKind: 'water' | 'fertilize' | 'prune' | 'repot' | 'rotate' | 'other';
+          notes: string | null;
+        };
+
+    const entries: JournalEntry[] = [];
+    for (const r of photoRows) {
+      entries.push({
+        kind: 'photo',
+        id: r.id,
+        plantId: r.plantId ?? null,
+        plantNickname: r.plantNickname ?? null,
+        takenAt: r.takenAt.toISOString(),
+        mode: r.mode ?? null,
+      });
+    }
+    for (const r of careRows) {
+      entries.push({
+        kind: 'care',
+        id: r.id,
+        plantId: r.plantId,
+        plantNickname: r.plantNickname ?? null,
+        occurredAt: r.occurredAt.toISOString(),
+        careKind: r.kind,
+        notes: r.notes ?? null,
+      });
+    }
+    entries.sort((a, b) => {
+      const at = a.kind === 'photo' ? a.takenAt : a.occurredAt;
+      const bt = b.kind === 'photo' ? b.takenAt : b.occurredAt;
+      return at < bt ? 1 : at > bt ? -1 : 0;
+    });
+    return entries.slice(0, 100);
+  });
+
   app.delete('/plants/:id', async (request, reply) => {
     const session = await getSession(request);
     if (!session) return reply.status(401).send({ error: 'unauthorized' });
