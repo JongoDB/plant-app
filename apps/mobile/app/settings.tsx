@@ -46,6 +46,11 @@ function SettingsContent() {
         variant="secondary"
         onPress={() => router.push('/reminders')}
       />
+      <Button
+        title="About & Privacy"
+        variant="secondary"
+        onPress={() => router.push('/about')}
+      />
       <Button title="Sign out" onPress={signOut} variant="ghost" loading={signingOut} />
     </Screen>
   );

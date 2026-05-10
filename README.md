@@ -9,7 +9,11 @@ App name is TBD. The code-level slug stays `plant-app` everywhere; the
 on-screen name lives in one constant (`packages/shared/src/branding.ts`) so
 renaming is a single edit. Rooti is the AI assistant's name.
 
-> **Status:** Slice 0 — scaffolding only. No features wired up yet.
+> **Status:** Slices 0–10 shipped. Auth + plants + Rooti chat with streaming +
+> photos + plant ID + reminders + weather + on-device TTS/STT + voice mode are
+> wired end-to-end. Vision frames (Slice 11), light meter (Slice 12), and push
+> notifications (the second half of Slice 6) are deferred — see "Deferred work"
+> below.
 
 ---
 
@@ -189,7 +193,7 @@ nvm use
 # Install deps for every workspace
 pnpm install
 
-# Copy env files (they're gitignored; defaults are dev-friendly)
+# Copy env files (gitignored)
 cp .env.example .env
 cp apps/api/.env.example apps/api/.env
 cp apps/mobile/.env.example apps/mobile/.env
@@ -197,9 +201,12 @@ cp apps/mobile/.env.example apps/mobile/.env
 # Bring up Postgres
 pnpm db:up
 
-# Run migrations (no migrations exist yet — Slice 1 generates the first batch)
-# pnpm --filter @plant-app/api db:generate
-# pnpm --filter @plant-app/api db:migrate
+# Apply migrations
+pnpm --filter @plant-app/api db:migrate
+
+# Drop in your keys (see "Environment variables" below)
+# At minimum: AUTH_SECRET (auto-generated as a placeholder),
+# ANTHROPIC_AUTH_TOKEN (or ANTHROPIC_API_KEY), PLANTNET_API_KEY.
 
 # Start the API (port 3000)
 pnpm dev:api
@@ -208,8 +215,27 @@ pnpm dev:api
 pnpm dev:mobile
 ```
 
-You should see the API log `plant-app api listening` and the mobile placeholder
-home screen show **API status: ok**.
+Mobile depends on a dev-client build (we use native modules:
+expo-image-picker, expo-image-manipulator, expo-secure-store, expo-location,
+expo-speech, @react-native-voice/voice). On iOS that means `pnpm --filter
+@plant-app/mobile prebuild` then `pnpm --filter @plant-app/mobile ios` from a
+machine with Xcode. Same on Android with Android Studio. Expo Go won't work.
+
+### Environment variables
+
+Required before specific features light up. Without each, the relevant feature
+falls back to a structured "not configured" error rather than crashing.
+
+| Variable | What it unlocks | Where to get it |
+|---|---|---|
+| `AUTH_SECRET` | Sessions in general | `openssl rand -hex 32` |
+| `ANTHROPIC_AUTH_TOKEN` *or* `ANTHROPIC_API_KEY` | Rooti replies | `claude setup-token` (subscription) or console.anthropic.com |
+| `PLANTNET_API_KEY` | Plant identification | https://my.plantnet.org/account/getApiKey (free, 500/day) |
+| `RESEND_API_KEY` + `EMAIL_FROM` | Magic-link auth (button is a placeholder until set) | resend.com (free tier 3k/mo) |
+| Google/Apple/Microsoft/Facebook OAuth | The matching social-login button | Provider consoles |
+| `APNS_*` + `FCM_SERVICE_ACCOUNT_JSON_PATH` | Push notifications when reminders fire | Apple Developer + Firebase consoles |
+
+Open-Meteo (weather) needs no key.
 
 ---
 
@@ -264,24 +290,44 @@ running on the user's network. Slice 0 is already future-proofed for this:
 
 ## Slice roadmap
 
-Slice 0 (this PR) is scaffolding only. Subsequent slices each ship one
-working vertical capability and update the README + composition root.
+| # | Slice | Status | What shipped |
+|--:|---|:--:|---|
+| 0 | Scaffolding | ✅ | Workspaces, interfaces, stubs, health check. |
+| 1 | Auth | ✅ | Better Auth + email/password. OAuth + magic-link buttons render as "Coming soon" placeholders until creds drop in. |
+| 2 | Plants CRUD | ✅ | Add / list / detail / delete. |
+| 3 | Rooti text MVP | ✅ | Anthropic SDK, SSE streaming, tool use, plant context, prompt caching. |
+| 4 | Photo attach | ✅ | On-device resize to ≤1568px, upload, image content blocks for Claude vision. |
+| 5 | Plant ID | ✅ | Pl@ntNet provider, identify flow on mobile, real `identify_plant` Rooti tool. |
+| 6 | Care reminders | ⚠️ partial | CRUD + complete + scheduler tick. Push delivery (APNs/FCM) deferred — see below. |
+| 7 | Weather | ✅ | Open-Meteo, weather card on home, weather injected into Rooti's context. |
+| 8 | On-device TTS | ✅ | `expo-speech`, Speak/Stop button on assistant bubbles. |
+| 9 | On-device STT | ✅ | `@react-native-voice/voice`, push-to-talk mic on Rooti input. |
+| 10 | Voice mode | ✅ | Header toggle, sentence-buffered TTS during streaming, auto-send on mic release. |
+| 11 | Vision frames | ⏸ deferred | Needs a TFLite plant-or-not model. Stub interface in place. |
+| 12 | Light meter | ⏸ deferred | Needs raw-pixel access; either a native module or a JS image decoder. |
 
-| # | Slice | What ships |
-|--:|---|---|
-| 0 | Scaffolding | This PR. Workspaces, interfaces, stubs, health check. |
-| 1 | Auth | Better Auth wired (email, Google, Apple, Microsoft, Facebook, magic link via Resend). Login/signup screens. |
-| 2 | Plants CRUD | Add plant, list, detail. No AI. |
-| 3 | **Rooti text MVP** | Anthropic SDK, SSE streaming proxy, tool use, plant context. Send a text message about a plant and get a streamed reply. |
-| 4 | Photo attach | Camera/picker on mobile, on-device thumbnail, upload, Claude vision. |
-| 5 | Plant ID | Pl@ntNet provider, identify-from-photo flow. |
-| 6 | Care reminders | Schedule, log waterings/etc., direct APNs + FCM. |
-| 7 | Weather + watering recs | Open-Meteo provider, recommendations on plant detail. |
-| 8 | On-device TTS | `expo-speech` for Rooti voice output. |
-| 9 | On-device STT | Push-to-talk via native `SFSpeechRecognizer` / `SpeechRecognizer`. |
-| 10 | Voice mode | Sentence-streamed TTS over SSE. |
-| 11 | Vision frames | `vision-camera` + `react-native-fast-tflite` plant pre-filter for video. |
-| 12 | Light meter | Stretch — phone camera as light meter for location recs. |
+### Deferred work
+
+**Push notifications (second half of Slice 6).** The reminder scheduler tick is
+running and structurally logs due reminders. Wiring real APNs + FCM delivery
+needs your APNs auth key (.p8 + key ID + team ID + bundle ID) and the FCM
+service-account JSON. When you have those, add an APNs provider that signs JWTs
+and POSTs to `api.push.apple.com`, and an FCM provider that uses
+`google-auth-library` for the OAuth refresh, both behind the existing
+`PushProvider` interface. The scheduler hands off to `services.push` — that's
+the seam.
+
+**Vision frames (Slice 11).** The intent is video walk-throughs where on-device
+MobileNet picks the best 3–5 frames before any cloud call. This needs a TFLite
+model file (a quantized MobileNetV3-small is ~4 MB) and `react-native-vision-
+camera` + `react-native-fast-tflite`. Both deps are well-supported but the
+right model is a curation decision, and bundling vs. downloading at first run
+is a UX call.
+
+**Light meter (Slice 12).** Stretch goal — read brightness from the camera
+preview to suggest plant placement. RN doesn't have a no-deps path to raw
+pixel data, so this needs either a small native module or a heavier dependency
+like a JS image decoder. Worth doing once Slice 11 is on the way.
 
 ---
 

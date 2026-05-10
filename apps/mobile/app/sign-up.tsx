@@ -101,6 +101,19 @@ export default function SignUpScreen() {
             </Pressable>
           </Link>
         </View>
+
+        <View style={styles.privacyRow}>
+          <Text style={styles.privacyText}>
+            By signing up you agree that your voice and live camera frames stay on your
+            phone, while photos and chat text are sent to your backend and the services
+            it talks to.{' '}
+          </Text>
+          <Link href="/about" asChild>
+            <Pressable>
+              <Text style={styles.footerLink}>Learn more</Text>
+            </Pressable>
+          </Link>
+        </View>
       </Screen>
     </>
   );
@@ -154,6 +167,15 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textMuted,
+  },
+  privacyRow: {
+    marginTop: theme.spacing.md,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  privacyText: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textMuted,
+    lineHeight: 18,
   },
   footerLink: {
     fontSize: theme.fontSize.sm,
