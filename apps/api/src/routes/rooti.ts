@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import {
   ROOTI_SYSTEM_PROMPT,
   ROOTI_TOOL_DEFINITIONS,
@@ -11,7 +11,7 @@ import {
 
 import { getSession } from '../auth/requireSession.js';
 import { getDb } from '../db/client.js';
-import { photos } from '../db/schema.js';
+import { photos, plants, rootiConversations, rootiMessages } from '../db/schema.js';
 import { buildRootiToolHandlers } from '../rooti/handlers.js';
 import { loadRootiContext } from '../rooti/context.js';
 import {
@@ -325,6 +325,135 @@ export async function rootiRoutes(
       }
     }
   });
+
+  // ---- GET /rooti/conversations -----------------------------------------
+  // List the user's chats, newest activity first. The first user-text block
+  // serves as a preview "title" — anchored chats also surface the plant
+  // nickname so they're easy to skim.
+  app.get('/rooti/conversations', async (request, reply) => {
+    const session = await getSession(request);
+    if (!session) return reply.status(401).send({ error: 'unauthorized' });
+
+    const db = getDb();
+    const convoRows = await db
+      .select({
+        id: rootiConversations.id,
+        anchorPlantId: rootiConversations.anchorPlantId,
+        anchorPlantNickname: plants.nickname,
+        createdAt: rootiConversations.createdAt,
+        updatedAt: rootiConversations.updatedAt,
+      })
+      .from(rootiConversations)
+      .leftJoin(plants, eq(plants.id, rootiConversations.anchorPlantId))
+      .where(eq(rootiConversations.userId, session.user.id))
+      .orderBy(desc(rootiConversations.updatedAt))
+      .limit(50);
+
+    if (convoRows.length === 0) return [];
+
+    const ids = convoRows.map((r) => r.id);
+    const allMessages = await db
+      .select({
+        conversationId: rootiMessages.conversationId,
+        role: rootiMessages.role,
+        content: rootiMessages.content,
+        createdAt: rootiMessages.createdAt,
+      })
+      .from(rootiMessages)
+      .where(inArray(rootiMessages.conversationId, ids))
+      .orderBy(asc(rootiMessages.createdAt));
+
+    const byConv = new Map<string, typeof allMessages>();
+    for (const m of allMessages) {
+      const arr = byConv.get(m.conversationId) ?? [];
+      arr.push(m);
+      byConv.set(m.conversationId, arr);
+    }
+
+    return convoRows.map((c) => {
+      const msgs = byConv.get(c.id) ?? [];
+      const firstUser = msgs.find((m) => m.role === 'user');
+      const userBlocks = (firstUser?.content as RootiContentBlock[] | undefined) ?? [];
+      // The persistence layer prepends a "<context>…" text block to every
+      // first turn before the user's actual text. Skip that one and take the
+      // last text block, which is the user's real message.
+      const textBlocks = userBlocks.filter(
+        (b): b is { type: 'text'; text: string } => b.type === 'text',
+      );
+      const lastUserText = textBlocks[textBlocks.length - 1]?.text?.trim();
+      const preview =
+        lastUserText && !lastUserText.startsWith('<context>') ? lastUserText : undefined;
+      const lastMessageAt =
+        msgs[msgs.length - 1]?.createdAt.toISOString() ?? c.updatedAt.toISOString();
+      return {
+        id: c.id,
+        anchorPlantId: c.anchorPlantId ?? undefined,
+        anchorPlantNickname: c.anchorPlantNickname ?? undefined,
+        preview: preview ? truncate(preview, 80) : undefined,
+        messageCount: msgs.length,
+        createdAt: c.createdAt.toISOString(),
+        lastMessageAt,
+      };
+    });
+  });
+
+  // ---- GET /rooti/conversations/:id -------------------------------------
+  // Returns the message list for a single chat so the UI can rehydrate.
+  app.get('/rooti/conversations/:id', async (request, reply) => {
+    const session = await getSession(request);
+    if (!session) return reply.status(401).send({ error: 'unauthorized' });
+
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'invalid_id' });
+
+    const db = getDb();
+    const owner = await db
+      .select({ id: rootiConversations.id })
+      .from(rootiConversations)
+      .where(
+        and(
+          eq(rootiConversations.id, params.data.id),
+          eq(rootiConversations.userId, session.user.id),
+        ),
+      )
+      .limit(1);
+    if (owner.length === 0) return reply.status(404).send({ error: 'not_found' });
+
+    const messages = await loadMessages(params.data.id);
+    return { id: params.data.id, messages };
+  });
+
+  // ---- DELETE /rooti/conversations/:id ----------------------------------
+  app.delete('/rooti/conversations/:id', async (request, reply) => {
+    const session = await getSession(request);
+    if (!session) return reply.status(401).send({ error: 'unauthorized' });
+
+    const params = z.object({ id: z.uuid() }).safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'invalid_id' });
+
+    const db = getDb();
+    // Cascade messages first — schema doesn't declare an FK with onDelete
+    // since rootiMessages.conversationId is a plain uuid column, so we have
+    // to clear them ourselves.
+    await db
+      .delete(rootiMessages)
+      .where(eq(rootiMessages.conversationId, params.data.id));
+    const removed = await db
+      .delete(rootiConversations)
+      .where(
+        and(
+          eq(rootiConversations.id, params.data.id),
+          eq(rootiConversations.userId, session.user.id),
+        ),
+      )
+      .returning({ id: rootiConversations.id });
+    if (removed.length === 0) return reply.status(404).send({ error: 'not_found' });
+    return reply.status(204).send();
+  });
+}
+
+function truncate(s: string, max: number): string {
+  return s.length <= max ? s : `${s.slice(0, max - 1).trimEnd()}…`;
 }
 
 function parseToolInput(json: string): Record<string, unknown> {

@@ -1,9 +1,31 @@
 import { Platform } from 'react-native';
+import type { RootiMessage } from '@plant-app/shared';
 
 import { authClient } from '../auth/client';
 import { env } from '../config/env';
+import { api } from './client';
 
 const FETCH_CREDENTIALS: RequestCredentials = Platform.OS === 'web' ? 'include' : 'omit';
+
+export interface ConversationSummary {
+  id: string;
+  anchorPlantId?: string;
+  anchorPlantNickname?: string;
+  preview?: string;
+  messageCount: number;
+  createdAt: string;
+  lastMessageAt: string;
+}
+
+export const rootiApi = {
+  listConversations: () => api.get<ConversationSummary[]>('/rooti/conversations'),
+  getConversation: (id: string) =>
+    api.get<{ id: string; messages: RootiMessage[] }>(
+      `/rooti/conversations/${id}`,
+    ),
+  deleteConversation: (id: string) =>
+    api.delete<void>(`/rooti/conversations/${id}`),
+};
 
 /**
  * Streaming client for the Rooti SSE endpoint.

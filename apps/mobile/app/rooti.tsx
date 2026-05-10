@@ -12,10 +12,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { branding } from '@plant-app/shared';
+import type { RootiMessage } from '@plant-app/shared';
 
-import { streamRootiMessage } from '../src/api/rooti';
+import { rootiApi, streamRootiMessage } from '../src/api/rooti';
 import { uploadPhoto } from '../src/api/photos';
 import { RequireAuth } from '../src/components/RequireAuth';
 import {
@@ -53,6 +54,65 @@ interface PendingPhoto {
   localUri: string;
 }
 
+/**
+ * Convert a server message list into the screen's flatter ChatMessage[]
+ * shape. Tool-role messages get folded into the previous assistant turn
+ * (Anthropic's tool_use ↔ tool_result pairing) so the chat reads as a
+ * single user/assistant alternation. Image blocks don't carry their
+ * local URI back, so resumed chats show user messages with images as
+ * "[photo]" placeholders — the original camera roll URI was discarded
+ * after upload.
+ */
+function rehydrate(messages: RootiMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const m of messages) {
+    if (m.role === 'tool') {
+      const last = out[out.length - 1];
+      for (const block of m.content) {
+        if (block.type === 'tool_result' && last) {
+          const idx = last.tools.findIndex(
+            (t) => t.kind === 'pending' && t.id === block.toolUseId,
+          );
+          if (idx >= 0) {
+            const pending = last.tools[idx]!;
+            last.tools[idx] = {
+              kind: 'result',
+              id: pending.id,
+              name: pending.name,
+              output: block.output,
+            };
+          }
+        }
+      }
+      continue;
+    }
+    const tools: ToolEvent[] = [];
+    const textParts: string[] = [];
+    let hasImage = false;
+    for (const block of m.content) {
+      // Strip the <context>…</context> system block the API prepends to
+      // the first turn — it's noise when read back.
+      if (block.type === 'text') {
+        const t = block.text;
+        if (m.role === 'user' && t.trimStart().startsWith('<context>')) continue;
+        textParts.push(t);
+      } else if (block.type === 'image') {
+        hasImage = true;
+      } else if (block.type === 'tool_use') {
+        tools.push({ kind: 'pending', id: block.toolUseId, name: block.toolName });
+      }
+    }
+    if (hasImage && m.role === 'user') textParts.unshift('[photo attached]');
+    out.push({
+      id: m.id,
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      text: textParts.join('\n').trim(),
+      tools,
+    });
+  }
+  return out;
+}
+
 export default function RootiScreen() {
   return (
     <RequireAuth>
@@ -62,9 +122,11 @@ export default function RootiScreen() {
 }
 
 function RootiChat() {
-  const { plantId, plantName } = useLocalSearchParams<{
+  const router = useRouter();
+  const { plantId, plantName, conversationId: convoIdParam } = useLocalSearchParams<{
     plantId?: string;
     plantName?: string;
+    conversationId?: string;
   }>();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -152,6 +214,26 @@ function RootiChat() {
       locationRef.current = loc;
     })();
   }, []);
+
+  // If we're resuming a chat, hydrate the message list from the server.
+  useEffect(() => {
+    if (!convoIdParam) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await rootiApi.getConversation(convoIdParam);
+        if (cancelled) return;
+        conversationIdRef.current = data.id;
+        setMessages(rehydrate(data.messages));
+      } catch (err) {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [convoIdParam]);
 
   const headerTitle = plantName
     ? `${branding.ASSISTANT_NAME} · ${plantName}`
@@ -308,18 +390,27 @@ function RootiChat() {
         options={{
           title: headerTitle,
           headerRight: () => (
-            <Pressable
-              onPress={() => {
-                if (voiceMode) void tts.stop();
-                setVoiceMode((v) => !v);
-              }}
-              hitSlop={8}
-              style={styles.voiceModeButton}
-            >
-              <Text style={[styles.voiceModeText, voiceMode && styles.voiceModeOn]}>
-                {voiceMode ? '🔊 Voice on' : '🔇 Voice off'}
-              </Text>
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={() => router.push('/rooti-history')}
+                hitSlop={8}
+                style={styles.headerButton}
+              >
+                <Text style={styles.headerButtonText}>History</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (voiceMode) void tts.stop();
+                  setVoiceMode((v) => !v);
+                }}
+                hitSlop={8}
+                style={styles.voiceModeButton}
+              >
+                <Text style={[styles.voiceModeText, voiceMode && styles.voiceModeOn]}>
+                  {voiceMode ? '🔊 Voice on' : '🔇 Voice off'}
+                </Text>
+              </Pressable>
+            </View>
           ),
         }}
       />
@@ -672,6 +763,19 @@ const styles = StyleSheet.create({
   },
   micActiveIcon: {
     color: theme.colors.surface,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.xs,
+  },
+  headerButton: {
+    paddingHorizontal: theme.spacing.sm,
+  },
+  headerButtonText: {
+    color: theme.colors.primary,
+    fontSize: theme.fontSize.sm,
+    fontWeight: '600',
   },
   voiceModeButton: {
     paddingHorizontal: theme.spacing.sm,
