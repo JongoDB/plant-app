@@ -1,6 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import type { GeoLocation, Id, WeatherProvider } from '@plant-app/shared';
 
+import { findSpecies } from '../data/species.js';
 import { getDb } from '../db/client.js';
 import { careEvents, plants } from '../db/schema.js';
 
@@ -99,6 +100,45 @@ export async function loadRootiContext(input: RootiContextInput): Promise<RootiC
     if (anchorPlant.acquiredOn) lines.push(`- acquired: ${anchorPlant.acquiredOn}`);
     if (anchorPlant.notes) lines.push(`- notes: ${anchorPlant.notes}`);
     lines.push('');
+
+    // Species care rules from the local library, if we have a match.
+    // Gives Rooti grounded ranges instead of having to guess from training.
+    const species = anchorPlant.scientificName
+      ? findSpecies(anchorPlant.scientificName)
+      : undefined;
+    if (species) {
+      lines.push('## Care guidance for this species (from local library)');
+      if (species.light) lines.push(`- light preference: ${species.light}`);
+      if (species.waterFrequencyDays) {
+        lines.push(
+          `- water every ${species.waterFrequencyDays.min}–${species.waterFrequencyDays.max} days (adjust for season/light)`,
+        );
+      }
+      if (species.temperatureRangeC) {
+        lines.push(
+          `- preferred temp: ${species.temperatureRangeC.min}–${species.temperatureRangeC.max}°C`,
+        );
+      }
+      if (species.humidityRange) {
+        lines.push(
+          `- preferred humidity: ${species.humidityRange.minPct}–${species.humidityRange.maxPct}%`,
+        );
+      }
+      if (species.toxicToPets || species.toxicToHumans) {
+        const tox: string[] = [];
+        if (species.toxicToPets) tox.push('pets');
+        if (species.toxicToHumans) tox.push('humans');
+        lines.push(`- toxicity: toxic to ${tox.join(' and ')}`);
+      } else {
+        lines.push('- toxicity: not known to be toxic');
+      }
+      if (species.fertilizerNotes) lines.push(`- fertilizer: ${species.fertilizerNotes}`);
+      if (species.soilNotes) lines.push(`- soil: ${species.soilNotes}`);
+      if (species.commonIssues && species.commonIssues.length > 0) {
+        lines.push(`- common issues: ${species.commonIssues.join('; ')}`);
+      }
+      lines.push('');
+    }
 
     if (recentCare.length > 0) {
       lines.push('## Recent care events for this plant');
