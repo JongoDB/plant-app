@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import type { HomeLocation, Plant } from '@plant-app/shared';
+import type { HomeLocation, PhotoEntry, Plant } from '@plant-app/shared';
 
 import { authClient } from '../auth/client';
 import { env } from '../config/env';
@@ -120,6 +120,7 @@ export interface UpdatePlantInput {
 export const plantsApi = {
   list: () => api.get<Plant[]>('/plants'),
   get: (id: string) => api.get<Plant>(`/plants/${id}`),
+  photos: (id: string) => api.get<PhotoEntry[]>(`/plants/${id}/photos`),
   create: (input: CreatePlantInput) => api.post<Plant>('/plants', input),
   update: (id: string, input: UpdatePlantInput) => api.patch<Plant>(`/plants/${id}`, input),
   remove: (id: string) => api.delete<void>(`/plants/${id}`),

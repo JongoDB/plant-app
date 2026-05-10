@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { branding } from '@plant-app/shared';
-import type { Plant, Reminder } from '@plant-app/shared';
+import type { PhotoEntry, Plant, Reminder } from '@plant-app/shared';
 
 import { ApiError, plantsApi } from '../../src/api/client';
+import { uploadPhoto } from '../../src/api/photos';
 import { remindersApi } from '../../src/api/reminders';
+import { speciesSlug } from '../../src/api/species';
+import { AuthedImage } from '../../src/components/AuthedImage';
 import { Button } from '../../src/components/Button';
 import { ReminderRow } from '../../src/components/ReminderRow';
 import { RequireAuth } from '../../src/components/RequireAuth';
 import { Screen } from '../../src/components/Screen';
 import { theme } from '../../src/theme';
+import { pickFromCamera, pickFromLibrary, type PickedImage } from '../../src/utils/imagePicker';
 
 const LIGHT_LABEL: Record<string, string> = {
   direct: 'Direct sun',
@@ -32,16 +36,23 @@ function PlantDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [plant, setPlant] = useState<Plant | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [photoList, setPhotoList] = useState<PhotoEntry[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'not_found' | 'error'>('loading');
   const [error, setError] = useState<string | undefined>();
   const [deleting, setDeleting] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [p, r] = await Promise.all([plantsApi.get(id), remindersApi.forPlant(id)]);
+      const [p, r, ph] = await Promise.all([
+        plantsApi.get(id),
+        remindersApi.forPlant(id),
+        plantsApi.photos(id),
+      ]);
       setPlant(p);
       setReminders(r);
+      setPhotoList(ph);
       setStatus('ready');
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -52,6 +63,40 @@ function PlantDetail() {
       }
     }
   }, [id]);
+
+  const addPhoto = useCallback(
+    async (picker: () => Promise<PickedImage | null>) => {
+      if (!plant) return;
+      setError(undefined);
+      setAdding(true);
+      try {
+        const picked = await picker();
+        if (!picked) return;
+        await uploadPhoto({
+          uri: picked.uri,
+          mimeType: picked.mimeType,
+          width: picked.width,
+          height: picked.height,
+          plantId: plant.id,
+          mode: 'growth',
+        });
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setAdding(false);
+      }
+    },
+    [plant, load],
+  );
+
+  const onAddPhotoPress = () => {
+    Alert.alert('Add a photo', undefined, [
+      { text: 'Take photo', onPress: () => void addPhoto(pickFromCamera) },
+      { text: 'Choose from library', onPress: () => void addPhoto(pickFromLibrary) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
 
   useEffect(() => {
     void load();
@@ -144,6 +189,44 @@ function PlantDetail() {
           <DetailRow label="Notes" value={plant.notes} />
         </View>
 
+        <View style={styles.photosBlock}>
+          <View style={styles.photosHeader}>
+            <Text style={styles.sectionLabel}>
+              Photos {photoList.length > 0 ? `(${photoList.length})` : ''}
+            </Text>
+            <Pressable
+              onPress={onAddPhotoPress}
+              disabled={adding}
+              hitSlop={6}
+              style={styles.addPhoto}
+            >
+              {adding ? (
+                <ActivityIndicator color={theme.colors.primary} size="small" />
+              ) : (
+                <Text style={styles.addPhotoText}>+ Add photo</Text>
+              )}
+            </Pressable>
+          </View>
+          {photoList.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.photoStrip}
+            >
+              {photoList.map((p) => (
+                <View key={p.id} style={styles.photoTile}>
+                  <AuthedImage photoId={p.id} style={styles.photoImage} />
+                  <Text style={styles.photoDate}>{relativeDateFromIso(p.takenAt)}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={styles.muted}>
+              No photos yet. Add one to track how this plant changes over time.
+            </Text>
+          )}
+        </View>
+
         {reminders.filter((r) => r.active).length > 0 ? (
           <View style={styles.reminders}>
             <Text style={styles.sectionLabel}>Reminders</Text>
@@ -167,6 +250,15 @@ function PlantDetail() {
               })
             }
           />
+          {plant.scientificName ? (
+            <Button
+              title={`Care info for ${plant.commonName ?? 'this species'}`}
+              variant="secondary"
+              onPress={() =>
+                router.push(`/species/${speciesSlug(plant.scientificName!)}`)
+              }
+            />
+          ) : null}
           <Button
             title="Check the light here"
             variant="secondary"
@@ -187,7 +279,11 @@ function PlantDetail() {
               })
             }
           />
-          <Button title="Edit" variant="secondary" disabled subtitle="Coming soon" />
+          <Button
+            title="Edit"
+            variant="secondary"
+            onPress={() => router.push(`/plants/${plant.id}/edit`)}
+          />
           <Button
             title="Delete plant"
             variant="ghost"
@@ -199,6 +295,17 @@ function PlantDetail() {
       </Screen>
     </>
   );
+}
+
+function relativeDateFromIso(iso: string): string {
+  const d = new Date(iso);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.round((Date.now() - d.getTime()) / dayMs);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.round(days / 7)}w ago`;
+  return d.toLocaleDateString();
 }
 
 function DetailRow({ label, value }: { label: string; value?: string }) {
@@ -276,6 +383,47 @@ const styles = StyleSheet.create({
   error: {
     color: theme.colors.danger,
     fontSize: theme.fontSize.sm,
+  },
+  photosBlock: {
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  photosHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  addPhoto: {
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  addPhotoText: {
+    color: theme.colors.primary,
+    fontSize: theme.fontSize.sm,
+    fontWeight: '600',
+  },
+  photoStrip: {
+    gap: theme.spacing.sm,
+    paddingVertical: theme.spacing.xs,
+  },
+  photoTile: {
+    width: 96,
+    gap: 4,
+  },
+  photoImage: {
+    width: 96,
+    height: 96,
+    borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.surface,
+  },
+  photoDate: {
+    fontSize: theme.fontSize.xs,
+    color: theme.colors.textMuted,
+    textAlign: 'center',
+  },
+  muted: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
   },
   reminders: {
     gap: theme.spacing.sm,

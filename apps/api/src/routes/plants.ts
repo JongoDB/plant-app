@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { and, desc, eq } from 'drizzle-orm';
-import type { HomeLocation, Plant } from '@plant-app/shared';
+import type { HomeLocation, Plant, PhotoEntry } from '@plant-app/shared';
 
 import { getSession } from '../auth/requireSession.js';
 import { getDb } from '../db/client.js';
-import { plants } from '../db/schema.js';
+import { photos, plants } from '../db/schema.js';
 
 // --- request validation -----------------------------------------------------
 
@@ -103,6 +103,46 @@ export async function plantsRoutes(app: FastifyInstance): Promise<void> {
     const row = rows[0];
     if (!row) return reply.status(404).send({ error: 'not_found' });
     return rowToPlant(row);
+  });
+
+  // Growth timeline — photos taken of this plant, newest first.
+  app.get('/plants/:id/photos', async (request, reply) => {
+    const session = await getSession(request);
+    if (!session) return reply.status(401).send({ error: 'unauthorized' });
+
+    const params = idParam.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'invalid_id' });
+
+    const db = getDb();
+    // Verify the plant belongs to the user before disclosing anything.
+    const owner = await db
+      .select({ id: plants.id })
+      .from(plants)
+      .where(and(eq(plants.id, params.data.id), eq(plants.userId, session.user.id)))
+      .limit(1);
+    if (owner.length === 0) return reply.status(404).send({ error: 'not_found' });
+
+    const rows = await db
+      .select()
+      .from(photos)
+      .where(
+        and(eq(photos.userId, session.user.id), eq(photos.plantId, params.data.id)),
+      )
+      .orderBy(desc(photos.takenAt));
+
+    const out: PhotoEntry[] = rows.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      ...(r.plantId ? { plantId: r.plantId } : {}),
+      storageKey: r.storageKey,
+      ...(r.thumbnailKey ? { thumbnailKey: r.thumbnailKey } : {}),
+      width: r.width,
+      height: r.height,
+      takenAt: r.takenAt.toISOString(),
+      ...(r.mode ? { mode: r.mode } : {}),
+      ...(r.notes ? { notes: r.notes } : {}),
+    }));
+    return out;
   });
 
   app.post('/plants', async (request, reply) => {

@@ -47,6 +47,11 @@ function SettingsContent() {
         onPress={() => router.push('/reminders')}
       />
       <Button
+        title="Plant info library"
+        variant="secondary"
+        onPress={() => router.push('/species')}
+      />
+      <Button
         title="About & Privacy"
         variant="secondary"
         onPress={() => router.push('/about')}
