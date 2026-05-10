@@ -90,17 +90,26 @@ just navigate to the URL it prints (e.g. `http://localhost:8081`).
 
 - ✅ Sign up / sign in (email + password). OAuth buttons render but are
   inactive placeholders.
-- ✅ Add / view / delete plants.
+- ✅ Add / view / **edit** / delete plants.
 - ✅ Identify a plant (Pl@ntNet) — the file picker stands in for the
   camera. Drop in a flower photo and you should get back top-5 species.
 - ✅ Chat with Rooti. The mic button shows but reports "voice input
   isn't available on web" — type instead.
 - ✅ Attach a photo to a Rooti message via the file picker.
-- ✅ Reminders: schedule, view, mark complete.
+- ✅ Reminders: schedule, view, mark complete. **Due-today reminders
+  show on home with one-tap "Done"**.
 - ✅ Weather: grant location permission in the browser; the home weather
   card lights up.
 - ✅ Light meter — the JS implementation works on web. Use the file
   picker to pick a photo of a wall/window/surface; you'll get a category.
+- ✅ **Plant info library** (Settings → Plant info library, or the
+  "Care info" link from any plant whose scientific name is set) — 25
+  curated species with light/water/temp/humidity/toxicity/issues.
+- ✅ **Photo timeline** per plant — add photos, see them in a horizontal
+  strip with relative dates. Tap a photo to set it as the cover; the
+  cover shows on the home screen card.
+- ✅ **Care log** per plant — every reminder you complete (or care event
+  Rooti logs) appears as a row.
 - ⏸ Smart camera — shows the "open on a device" message; this one's
   native-only.
 - ⏸ Voice mode — the toggle appears in the Rooti header, but TTS support
@@ -110,10 +119,11 @@ just navigate to the URL it prints (e.g. `http://localhost:8081`).
 
 - `expo-secure-store` falls back to `localStorage`. Sessions persist
   across reloads but not across browsers.
-- Browser cookie behavior: we attach the auth cookie manually on every
-  fetch (`credentials: 'omit'`), so it Just Works regardless of CORS
-  modes — but it means the browser doesn't show the session cookie in
-  devtools' Cookies tab; check `localStorage` → `plantapp.…` instead.
+- Browser cookie behavior: on web we use `credentials: 'include'` so the
+  HttpOnly session cookie travels automatically. The cookie won't show
+  up in `localStorage` — check the devtools **Cookies** tab for `localhost:3000`
+  if you want to inspect it. Native uses a manual Cookie header instead
+  (no browser jar).
 
 ---
 
@@ -181,7 +191,18 @@ Then rebuild the app (env values bake into the JS bundle).
    "today" / "every 7 days." Mark it complete the next day; it should
    roll forward 7 days and log a care event.
 9. **Reminders list** — Settings → All reminders.
-10. **Privacy / About** — Settings → About & Privacy. The local-first
+10. **Edit a plant** — open a plant, tap "Edit," tweak a field, save.
+    The home card should reflect the change immediately.
+11. **Photo timeline + cover** — open a plant, "Add photo" a few times,
+    then tap a photo in the strip → "Set cover." The home card thumbnail
+    should swap to that photo.
+12. **Care log** — complete a reminder, then re-open the plant. The
+    "Care log" section should now show the event.
+13. **Plant info library** — Settings → "Plant info library" → search
+    for one of: monstera, fern, pothos, basil. Tap to see care details.
+    From a plant whose scientific name matches, the **"Care info"**
+    button on plant detail jumps straight to the species page.
+14. **Privacy / About** — Settings → About & Privacy. The local-first
     explanation lives there.
 
 ---
