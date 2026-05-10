@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 import { getSession } from '../auth/requireSession.js';
 import { getDb } from '../db/client.js';
-import { photos } from '../db/schema.js';
+import { photos, plants } from '../db/schema.js';
 import type { Services } from '../services/index.js';
 
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp'] as const;
@@ -97,6 +97,22 @@ export async function photosRoutes(
       .returning();
     const row = inserted[0];
     if (!row) return reply.status(500).send({ error: 'insert_failed' });
+
+    // First photo for a plant becomes its thumbnail until the user
+    // explicitly picks another. Scope-limited to the owner so we don't
+    // touch someone else's plant if a stale plantId leaks through.
+    if (plantId) {
+      await db
+        .update(plants)
+        .set({ primaryPhotoId: row.id })
+        .where(
+          and(
+            eq(plants.id, plantId),
+            eq(plants.userId, session.user.id),
+            isNull(plants.primaryPhotoId),
+          ),
+        );
+    }
 
     return reply.status(201).send({
       id: row.id,

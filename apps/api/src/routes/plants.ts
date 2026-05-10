@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { and, desc, eq } from 'drizzle-orm';
-import type { HomeLocation, Plant, PhotoEntry } from '@plant-app/shared';
+import type { CareEvent, HomeLocation, Plant, PhotoEntry } from '@plant-app/shared';
 
 import { getSession } from '../auth/requireSession.js';
 import { getDb } from '../db/client.js';
-import { photos, plants } from '../db/schema.js';
+import { careEvents, photos, plants } from '../db/schema.js';
 
 // --- request validation -----------------------------------------------------
 
@@ -141,6 +141,46 @@ export async function plantsRoutes(app: FastifyInstance): Promise<void> {
       takenAt: r.takenAt.toISOString(),
       ...(r.mode ? { mode: r.mode } : {}),
       ...(r.notes ? { notes: r.notes } : {}),
+    }));
+    return out;
+  });
+
+  // Care log — events written by reminder completions or by Rooti tools.
+  app.get('/plants/:id/care-events', async (request, reply) => {
+    const session = await getSession(request);
+    if (!session) return reply.status(401).send({ error: 'unauthorized' });
+
+    const params = idParam.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'invalid_id' });
+
+    const db = getDb();
+    const owner = await db
+      .select({ id: plants.id })
+      .from(plants)
+      .where(and(eq(plants.id, params.data.id), eq(plants.userId, session.user.id)))
+      .limit(1);
+    if (owner.length === 0) return reply.status(404).send({ error: 'not_found' });
+
+    const rows = await db
+      .select()
+      .from(careEvents)
+      .where(
+        and(
+          eq(careEvents.userId, session.user.id),
+          eq(careEvents.plantId, params.data.id),
+        ),
+      )
+      .orderBy(desc(careEvents.occurredAt))
+      .limit(50);
+
+    const out: CareEvent[] = rows.map((r) => ({
+      id: r.id,
+      plantId: r.plantId,
+      userId: r.userId,
+      kind: r.kind,
+      occurredAt: r.occurredAt.toISOString(),
+      ...(r.notes ? { notes: r.notes } : {}),
+      ...(r.metadata ? { metadata: r.metadata as Record<string, unknown> } : {}),
     }));
     return out;
   });

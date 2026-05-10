@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { branding } from '@plant-app/shared';
-import type { PhotoEntry, Plant, Reminder } from '@plant-app/shared';
+import type { CareEvent, CareEventKind, PhotoEntry, Plant, Reminder } from '@plant-app/shared';
 
 import { ApiError, plantsApi } from '../../src/api/client';
 import { uploadPhoto } from '../../src/api/photos';
@@ -37,6 +37,7 @@ function PlantDetail() {
   const [plant, setPlant] = useState<Plant | null>(null);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [photoList, setPhotoList] = useState<PhotoEntry[]>([]);
+  const [careLog, setCareLog] = useState<CareEvent[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'not_found' | 'error'>('loading');
   const [error, setError] = useState<string | undefined>();
   const [deleting, setDeleting] = useState(false);
@@ -45,14 +46,16 @@ function PlantDetail() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const [p, r, ph] = await Promise.all([
+      const [p, r, ph, ce] = await Promise.all([
         plantsApi.get(id),
         remindersApi.forPlant(id),
         plantsApi.photos(id),
+        plantsApi.careEvents(id),
       ]);
       setPlant(p);
       setReminders(r);
       setPhotoList(ph);
+      setCareLog(ce);
       setStatus('ready');
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
@@ -238,6 +241,20 @@ function PlantDetail() {
           </View>
         ) : null}
 
+        {careLog.length > 0 ? (
+          <View style={styles.reminders}>
+            <Text style={styles.sectionLabel}>Care log</Text>
+            {careLog.slice(0, 8).map((e) => (
+              <View key={e.id} style={styles.careRow}>
+                <Text style={styles.careKind}>
+                  {careKindEmoji(e.kind)} {careKindLabel(e.kind)}
+                </Text>
+                <Text style={styles.careDate}>{relativeDateFromIso(e.occurredAt)}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.actions}>
@@ -295,6 +312,27 @@ function PlantDetail() {
       </Screen>
     </>
   );
+}
+
+function careKindEmoji(kind: CareEventKind): string {
+  switch (kind) {
+    case 'water':
+      return '💧';
+    case 'fertilize':
+      return '🪴';
+    case 'prune':
+      return '✂️';
+    case 'repot':
+      return '🌱';
+    case 'rotate':
+      return '🔄';
+    case 'other':
+      return '📝';
+  }
+}
+
+function careKindLabel(kind: CareEventKind): string {
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
 function relativeDateFromIso(iso: string): string {
@@ -428,6 +466,25 @@ const styles = StyleSheet.create({
   reminders: {
     gap: theme.spacing.sm,
     marginTop: theme.spacing.sm,
+  },
+  careRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radii.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  careKind: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.text,
+    fontWeight: '500',
+  },
+  careDate: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
   },
   sectionLabel: {
     fontSize: theme.fontSize.sm,
