@@ -34,7 +34,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-dev-client"
+      "expo-dev-client",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Plant App uses the camera so Rooti can see your plants live.",
+          "enableMicrophonePermission": false
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

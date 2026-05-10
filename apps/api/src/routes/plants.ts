@@ -27,6 +27,22 @@ const createPlantBody = z.object({
   notes: z.string().trim().max(2000).optional(),
 });
 
+const updatePlantBody = z
+  .object({
+    nickname: z.string().trim().min(1).max(120).optional(),
+    scientificName: z.string().trim().max(255).nullable().optional(),
+    commonName: z.string().trim().max(255).nullable().optional(),
+    homeLocation: z
+      .object({
+        description: z.string().trim().min(1).max(255).optional(),
+        lightExposure: lightExposureSchema.nullable().optional(),
+      })
+      .optional(),
+    acquiredOn: z.iso.date().nullable().optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'no fields to update' });
+
 const idParam = z.object({ id: z.uuid() });
 
 // --- mapping ----------------------------------------------------------------
@@ -120,6 +136,46 @@ export async function plantsRoutes(app: FastifyInstance): Promise<void> {
     if (!row) return reply.status(500).send({ error: 'insert_failed' });
 
     return reply.status(201).send(rowToPlant(row));
+  });
+
+  app.patch('/plants/:id', async (request, reply) => {
+    const session = await getSession(request);
+    if (!session) return reply.status(401).send({ error: 'unauthorized' });
+
+    const params = idParam.safeParse(request.params);
+    if (!params.success) return reply.status(400).send({ error: 'invalid_id' });
+    const body = updatePlantBody.safeParse(request.body);
+    if (!body.success) {
+      return reply
+        .status(400)
+        .send({ error: 'validation_failed', issues: body.error.issues });
+    }
+
+    const set: Partial<typeof plants.$inferInsert> = {};
+    if (body.data.nickname !== undefined) set.nickname = body.data.nickname;
+    if (body.data.scientificName !== undefined)
+      set.scientificName = body.data.scientificName ?? null;
+    if (body.data.commonName !== undefined) set.commonName = body.data.commonName ?? null;
+    if (body.data.acquiredOn !== undefined) set.acquiredOn = body.data.acquiredOn ?? null;
+    if (body.data.notes !== undefined) set.notes = body.data.notes ?? null;
+    if (body.data.homeLocation !== undefined) {
+      if (body.data.homeLocation.description !== undefined) {
+        set.homeLocationDescription = body.data.homeLocation.description;
+      }
+      if (body.data.homeLocation.lightExposure !== undefined) {
+        set.homeLocationLight = body.data.homeLocation.lightExposure;
+      }
+    }
+
+    const db = getDb();
+    const updated = await db
+      .update(plants)
+      .set(set)
+      .where(and(eq(plants.id, params.data.id), eq(plants.userId, session.user.id)))
+      .returning();
+    const row = updated[0];
+    if (!row) return reply.status(404).send({ error: 'not_found' });
+    return rowToPlant(row);
   });
 
   app.delete('/plants/:id', async (request, reply) => {

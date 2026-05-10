@@ -32,12 +32,17 @@
     "expo-secure-store": "^55.0.13",
     "expo-speech": "~55.0.0",
     "expo-status-bar": "~55.0.0",
+    "jpeg-js": "^0.4.4",
     "react": "19.2.0",
     "react-dom": "^19.2.0",
     "react-native": "~0.83.6",
+    "react-native-fast-tflite": "^1.6.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
-    "react-native-web": "~0.21.0"
+    "react-native-vision-camera": "^4.7.3",
+    "react-native-web": "~0.21.0",
+    "react-native-worklets-core": "^1.6.3",
+    "vision-camera-resize-plugin": "^2.1.1"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",

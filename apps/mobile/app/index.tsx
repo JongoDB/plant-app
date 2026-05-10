@@ -131,6 +131,12 @@ function PlantsList() {
           onPress={() => router.push('/identify')}
           style={styles.actionSecondary}
         />
+        <Button
+          title="📷"
+          variant="secondary"
+          onPress={() => router.push('/camera')}
+          style={styles.actionIcon}
+        />
       </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -275,6 +281,9 @@ const styles = StyleSheet.create({
   },
   actionSecondary: {
     flex: 1,
+  },
+  actionIcon: {
+    width: 48,
   },
   error: {
     color: theme.colors.danger,

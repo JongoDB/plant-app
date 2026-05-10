@@ -168,6 +168,16 @@ function PlantDetail() {
             }
           />
           <Button
+            title="Check the light here"
+            variant="secondary"
+            onPress={() =>
+              router.push({
+                pathname: '/lightmeter',
+                params: { plantId: plant.id, plantName: plant.nickname },
+              })
+            }
+          />
+          <Button
             title="Schedule a reminder"
             variant="secondary"
             onPress={() =>

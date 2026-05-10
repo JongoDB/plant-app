@@ -93,9 +93,22 @@ export interface CreatePlantInput {
   notes?: string;
 }
 
+export interface UpdatePlantInput {
+  nickname?: string;
+  scientificName?: string | null;
+  commonName?: string | null;
+  homeLocation?: {
+    description?: string;
+    lightExposure?: HomeLocation['lightExposure'] | null;
+  };
+  acquiredOn?: string | null;
+  notes?: string | null;
+}
+
 export const plantsApi = {
   list: () => api.get<Plant[]>('/plants'),
   get: (id: string) => api.get<Plant>(`/plants/${id}`),
   create: (input: CreatePlantInput) => api.post<Plant>('/plants', input),
+  update: (id: string, input: UpdatePlantInput) => api.patch<Plant>(`/plants/${id}`, input),
   remove: (id: string) => api.delete<void>(`/plants/${id}`),
 };

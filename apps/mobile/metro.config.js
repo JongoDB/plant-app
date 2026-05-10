@@ -21,6 +21,21 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
+// Bundle .tflite models as assets so we can require() them.
+config.resolver.assetExts = [...new Set([...(config.resolver.assetExts ?? []), 'tflite'])];
+
+// Exclude root-level paths Metro shouldn't crawl. Anchor patterns to the
+// workspace root so we don't accidentally block legitimate node_modules
+// directories that happen to contain `dist/` (e.g. react-native-web).
+const escaped = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+config.resolver.blockList = [
+  new RegExp(`^${escaped}/data/`),
+  new RegExp(`^${escaped}/apps/[^/]+/data/`),
+  new RegExp(`^${escaped}/apps/[^/]+/drizzle/`),
+  new RegExp(`^${escaped}/apps/[^/]+/dist/`),
+  new RegExp(`^${escaped}/packages/[^/]+/dist/`),
+];
+
 // NodeNext .js -> .ts/.tsx rewrite for relative imports inside shared.
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
