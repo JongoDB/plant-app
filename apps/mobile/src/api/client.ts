@@ -1,6 +1,18 @@
 import { Platform } from 'react-native';
 import type { CareEvent, HomeLocation, PhotoEntry, Plant } from '@plant-app/shared';
 
+/**
+ * GET /plants returns the bare Plant plus computed care fields the
+ * home-screen pill needs. The detail and edit endpoints still return
+ * the canonical Plant, so the extras live on a list-only type.
+ */
+export interface PlantSummary extends Plant {
+  /** ISO timestamp of the most recent 'water' care event, if any. */
+  lastWaterAt?: string;
+  /** Recommended watering interval from the species library, if matched. */
+  waterFrequencyDays?: { min: number; max: number };
+}
+
 import { authClient } from '../auth/client';
 import { env } from '../config/env';
 
@@ -118,7 +130,7 @@ export interface UpdatePlantInput {
 }
 
 export const plantsApi = {
-  list: () => api.get<Plant[]>('/plants'),
+  list: () => api.get<PlantSummary[]>('/plants'),
   get: (id: string) => api.get<Plant>(`/plants/${id}`),
   photos: (id: string) => api.get<PhotoEntry[]>(`/plants/${id}/photos`),
   careEvents: (id: string) => api.get<CareEvent[]>(`/plants/${id}/care-events`),

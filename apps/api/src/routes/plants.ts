@@ -2,8 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { and, desc, eq } from 'drizzle-orm';
 import type { CareEvent, HomeLocation, Plant, PhotoEntry } from '@plant-app/shared';
+import { max as drizzleMax } from 'drizzle-orm';
 
 import { getSession } from '../auth/requireSession.js';
+import { findSpecies } from '../data/species.js';
 import { getDb } from '../db/client.js';
 import { careEvents, photos, plants } from '../db/schema.js';
 
@@ -84,7 +86,41 @@ export async function plantsRoutes(app: FastifyInstance): Promise<void> {
       .from(plants)
       .where(eq(plants.userId, session.user.id))
       .orderBy(desc(plants.createdAt));
-    return rows.map(rowToPlant);
+
+    if (rows.length === 0) return [];
+
+    // Most recent water event per plant, in one query — used by the home
+    // screen to show a "due / overdue" pill on each card.
+    const lastWaterRows = await db
+      .select({
+        plantId: careEvents.plantId,
+        lastAt: drizzleMax(careEvents.occurredAt),
+      })
+      .from(careEvents)
+      .where(
+        and(
+          eq(careEvents.userId, session.user.id),
+          eq(careEvents.kind, 'water'),
+        ),
+      )
+      .groupBy(careEvents.plantId);
+    const lastWaterByPlant = new Map<string, Date>();
+    for (const r of lastWaterRows) {
+      if (r.lastAt) lastWaterByPlant.set(r.plantId, r.lastAt);
+    }
+
+    return rows.map((row) => {
+      const plant = rowToPlant(row);
+      const lastAt = lastWaterByPlant.get(row.id);
+      const species = row.scientificName ? findSpecies(row.scientificName) : undefined;
+      return {
+        ...plant,
+        ...(lastAt ? { lastWaterAt: lastAt.toISOString() } : {}),
+        ...(species?.waterFrequencyDays
+          ? { waterFrequencyDays: species.waterFrequencyDays }
+          : {}),
+      };
+    });
   });
 
   app.get('/plants/:id', async (request, reply) => {

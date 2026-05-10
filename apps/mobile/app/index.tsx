@@ -9,9 +9,9 @@ import {
 } from 'react-native';
 import { Link, Stack, useFocusEffect, useRouter } from 'expo-router';
 import { branding } from '@plant-app/shared';
-import type { Plant, Reminder, ReminderKind } from '@plant-app/shared';
+import type { Reminder, ReminderKind } from '@plant-app/shared';
 
-import { plantsApi } from '../src/api/client';
+import { plantsApi, type PlantSummary } from '../src/api/client';
 import { remindersApi } from '../src/api/reminders';
 import { weatherApi, type WeatherResponse } from '../src/api/weather';
 import { authClient } from '../src/auth/client';
@@ -47,7 +47,7 @@ function PlantsList() {
   const { data: session } = authClient.useSession();
   const firstName = session?.user.name?.split(' ')[0] ?? 'friend';
 
-  const [plants, setPlants] = useState<Plant[]>([]);
+  const [plants, setPlants] = useState<PlantSummary[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [weatherStatus, setWeatherStatus] = useState<'idle' | 'denied' | 'loading' | 'ready' | 'error'>(
@@ -272,7 +272,8 @@ function WeatherCard({
   );
 }
 
-function PlantCard({ plant }: { plant: Plant }) {
+function PlantCard({ plant }: { plant: PlantSummary }) {
+  const status = waterStatus(plant);
   return (
     <Link href={`/plants/${plant.id}`} asChild>
       <Pressable style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}>
@@ -294,9 +295,47 @@ function PlantCard({ plant }: { plant: Plant }) {
             <Text style={styles.cardSub}>📍 {plant.homeLocation.description}</Text>
           ) : null}
         </View>
+        {status ? (
+          <View style={[styles.cardPill, status.style]}>
+            <Text style={[styles.cardPillText, status.textStyle]}>{status.label}</Text>
+          </View>
+        ) : null}
       </Pressable>
     </Link>
   );
+}
+
+interface WaterStatusOut {
+  label: string;
+  style: object;
+  textStyle: object;
+}
+
+/**
+ * Card pill for at-a-glance care state. Stays silent unless we have both
+ * a known water interval (species library) and a recorded water event —
+ * a yellow "?" on every plant would just be noise.
+ */
+function waterStatus(p: PlantSummary): WaterStatusOut | null {
+  if (!p.waterFrequencyDays || !p.lastWaterAt) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.floor((Date.now() - new Date(p.lastWaterAt).getTime()) / dayMs);
+  const { min, max } = p.waterFrequencyDays;
+  if (days > max) {
+    return {
+      label: '💧 overdue',
+      style: styles.pillOverdue,
+      textStyle: styles.pillTextOverdue,
+    };
+  }
+  if (days >= min) {
+    return {
+      label: '💧 due',
+      style: styles.pillSoon,
+      textStyle: styles.pillTextSoon,
+    };
+  }
+  return null;
 }
 
 function isDueToday(iso: string): boolean {
@@ -510,6 +549,30 @@ const styles = StyleSheet.create({
   },
   cardThumbEmoji: {
     fontSize: 28,
+  },
+  cardPill: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 4,
+    borderRadius: theme.radii.pill,
+    borderWidth: 1,
+  },
+  cardPillText: {
+    fontSize: theme.fontSize.xs,
+    fontWeight: '700',
+  },
+  pillSoon: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.primary,
+  },
+  pillTextSoon: {
+    color: theme.colors.primary,
+  },
+  pillOverdue: {
+    backgroundColor: theme.colors.danger,
+    borderColor: theme.colors.danger,
+  },
+  pillTextOverdue: {
+    color: '#fff',
   },
   cardBody: {
     flex: 1,
