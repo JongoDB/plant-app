@@ -1,5 +1,5 @@
 import { and, desc, eq } from 'drizzle-orm';
-import type { Id } from '@plant-app/shared';
+import type { GeoLocation, Id, WeatherProvider } from '@plant-app/shared';
 
 import { getDb } from '../db/client.js';
 import { careEvents, plants } from '../db/schema.js';
@@ -24,6 +24,10 @@ import { careEvents, plants } from '../db/schema.js';
 export interface RootiContextInput {
   userId: Id;
   anchorPlantId?: Id;
+  /** When provided, weather is fetched and added to the context block. */
+  location?: GeoLocation;
+  /** Required when location is set. */
+  weather?: WeatherProvider;
 }
 
 export interface RootiContext {
@@ -118,9 +122,38 @@ export async function loadRootiContext(input: RootiContextInput): Promise<RootiC
       const where = p.homeLocationDescription ? ` — ${p.homeLocationDescription}` : '';
       lines.push(`- ${p.id}: ${display}${where}`);
     }
+    lines.push('');
   } else {
     lines.push("## User's plants");
     lines.push('- (collection is empty)');
+    lines.push('');
+  }
+
+  // Weather is best-effort. A failed weather call shouldn't break the chat.
+  if (input.location && input.weather) {
+    try {
+      const [current, forecast] = await Promise.all([
+        input.weather.current(input.location),
+        input.weather.forecast(input.location, 3),
+      ]);
+      lines.push('## Current weather (user location)');
+      lines.push(
+        `- ${Math.round(current.temperatureC)}°C, ${current.humidityPct}% humidity, ${current.conditions ?? 'n/a'}`,
+      );
+      if (current.precipitationMmh && current.precipitationMmh > 0) {
+        lines.push(`- precipitation: ${current.precipitationMmh.toFixed(1)} mm/h right now`);
+      }
+      if (forecast.length > 0) {
+        lines.push('## 3-day forecast');
+        for (const f of forecast) {
+          lines.push(
+            `- ${f.date}: ${Math.round(f.tempMinC)}–${Math.round(f.tempMaxC)}°C, ${f.precipitationMm.toFixed(1)} mm precip`,
+          );
+        }
+      }
+    } catch {
+      // Don't surface weather failures to the LLM; just omit the section.
+    }
   }
 
   return { text: lines.join('\n') };

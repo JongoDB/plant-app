@@ -27,7 +27,7 @@ import { StubTextToSpeechEngine } from './ai/tts/stubTts.js';
 import { StubOnDeviceVisionEngine } from './ai/vision/stubVision.js';
 import { PlantNetPlantIdProvider } from './providers/plantId/plantNetPlantId.js';
 import { StubPlantIdProvider } from './providers/plantId/stubPlantId.js';
-import { StubWeatherProvider } from './providers/weather/stubWeather.js';
+import { OpenMeteoWeatherProvider } from './providers/weather/openMeteoWeather.js';
 import { LocalFsStorageProvider } from './providers/storage/localFsStorage.js';
 import { StubEmailProvider } from './providers/email/stubEmail.js';
 import { StubPushProvider } from './providers/push/stubPush.js';
@@ -64,7 +64,8 @@ export function buildServices(env: AppEnv): Services {
     plantId: env.PLANTNET_API_KEY
       ? new PlantNetPlantIdProvider({ apiKey: env.PLANTNET_API_KEY })
       : new StubPlantIdProvider(),
-    weather: new StubWeatherProvider(),
+    // Open-Meteo needs no key, so it's always on.
+    weather: new OpenMeteoWeatherProvider(),
     storage: new LocalFsStorageProvider({
       rootDir: env.STORAGE_DIR,
       publicBase: env.STORAGE_PUBLIC_BASE_URL,

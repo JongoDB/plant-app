@@ -12,11 +12,13 @@ import { branding } from '@plant-app/shared';
 import type { Plant } from '@plant-app/shared';
 
 import { plantsApi } from '../src/api/client';
+import { weatherApi, type WeatherResponse } from '../src/api/weather';
 import { authClient } from '../src/auth/client';
 import { Button } from '../src/components/Button';
 import { RequireAuth } from '../src/components/RequireAuth';
 import { Screen } from '../src/components/Screen';
 import { theme } from '../src/theme';
+import { getLocation } from '../src/utils/location';
 
 export default function HomeScreen() {
   return (
@@ -44,6 +46,10 @@ function PlantsList() {
   const firstName = session?.user.name?.split(' ')[0] ?? 'friend';
 
   const [plants, setPlants] = useState<Plant[]>([]);
+  const [weather, setWeather] = useState<WeatherResponse | null>(null);
+  const [weatherStatus, setWeatherStatus] = useState<'idle' | 'denied' | 'loading' | 'ready' | 'error'>(
+    'idle',
+  );
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -58,13 +64,30 @@ function PlantsList() {
     }
   }, []);
 
+  const loadWeather = useCallback(async (force?: boolean) => {
+    setWeatherStatus('loading');
+    try {
+      const loc = await getLocation(force ? { force: true } : undefined);
+      if (!loc) {
+        setWeatherStatus('denied');
+        return;
+      }
+      const w = await weatherApi.get(loc.lat, loc.lng);
+      setWeather(w);
+      setWeatherStatus('ready');
+    } catch {
+      setWeatherStatus('error');
+    }
+  }, []);
+
   // initial load
   useEffect(() => {
     void (async () => {
       await load();
       setLoading(false);
     })();
-  }, [load]);
+    void loadWeather();
+  }, [load, loadWeather]);
 
   // refresh on screen focus (e.g. after returning from add or detail)
   useFocusEffect(
@@ -89,6 +112,12 @@ function PlantsList() {
             : `${plants.length} ${plants.length === 1 ? 'plant' : 'plants'} in your collection.`}
         </Text>
       </View>
+
+      <WeatherCard
+        weather={weather}
+        status={weatherStatus}
+        onEnable={() => void loadWeather(true)}
+      />
 
       <View style={styles.actionRow}>
         <Button
@@ -131,6 +160,35 @@ function PlantsList() {
   );
 }
 
+function WeatherCard({
+  weather,
+  status,
+  onEnable,
+}: {
+  weather: WeatherResponse | null;
+  status: 'idle' | 'denied' | 'loading' | 'ready' | 'error';
+  onEnable: () => void;
+}) {
+  if (status === 'denied') {
+    return (
+      <Pressable onPress={onEnable} style={styles.weatherCardMuted}>
+        <Text style={styles.weatherMutedText}>📍 Enable location to see weather</Text>
+      </Pressable>
+    );
+  }
+  if (status !== 'ready' || !weather) return null;
+  const c = weather.current;
+  return (
+    <View style={styles.weatherCard}>
+      <Text style={styles.weatherTemp}>{Math.round(c.temperatureC)}°C</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.weatherConditions}>{c.conditions ?? 'now'}</Text>
+        <Text style={styles.weatherHumidity}>{c.humidityPct}% humidity</Text>
+      </View>
+    </View>
+  );
+}
+
 function PlantCard({ plant }: { plant: Plant }) {
   return (
     <Link href={`/plants/${plant.id}`} asChild>
@@ -169,6 +227,43 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: theme.fontSize.md,
+    color: theme.colors.textMuted,
+  },
+  weatherCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  weatherCardMuted: {
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: 'center',
+  },
+  weatherTemp: {
+    fontSize: theme.fontSize.xxl,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  weatherConditions: {
+    fontSize: theme.fontSize.md,
+    fontWeight: '500',
+    color: theme.colors.text,
+    textTransform: 'capitalize',
+  },
+  weatherHumidity: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
+  },
+  weatherMutedText: {
+    fontSize: theme.fontSize.sm,
     color: theme.colors.textMuted,
   },
   actionRow: {

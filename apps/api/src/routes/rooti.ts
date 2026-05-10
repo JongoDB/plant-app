@@ -51,6 +51,12 @@ const bodySchema = z.object({
   anchorPlantId: z.uuid().optional(),
   text: z.string().trim().min(1).max(8000),
   photoIds: z.array(z.uuid()).max(4).optional(),
+  location: z
+    .object({
+      lat: z.number().min(-90).max(90),
+      lng: z.number().min(-180).max(180),
+    })
+    .optional(),
 });
 
 export async function rootiRoutes(
@@ -135,7 +141,11 @@ export async function rootiRoutes(
       // attention), then context, then text. Per-turn context is
       // regenerated each call and stored once on this turn — so the wire
       // prefix accumulates context for every turn the user has had.
-      const ctx = await loadRootiContext({ userId, anchorPlantId: input.anchorPlantId });
+      const ctx = await loadRootiContext({
+        userId,
+        anchorPlantId: input.anchorPlantId,
+        ...(input.location ? { location: input.location, weather: opts.services.weather } : {}),
+      });
       const userContent: RootiContentBlock[] = [];
       for (const img of attachedImages) {
         userContent.push({

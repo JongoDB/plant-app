@@ -11,6 +11,7 @@ import { photosRoutes } from './routes/photos.js';
 import { plantsRoutes } from './routes/plants.js';
 import { remindersRoutes } from './routes/reminders.js';
 import { rootiRoutes } from './routes/rooti.js';
+import { weatherRoutes } from './routes/weather.js';
 import { buildServices } from './services/index.js';
 import { startReminderScheduler, type ReminderScheduler } from './scheduler/reminders.js';
 
@@ -53,10 +54,10 @@ export async function buildServer(env: AppEnv): Promise<FastifyInstance> {
   await app.register(photosRoutes, { services });
   await app.register(identifyRoutes, { services });
   await app.register(remindersRoutes);
+  await app.register(weatherRoutes, { services });
   await app.register(rootiRoutes, { services });
 
   // Future slices register here:
-  //   - weather + watering recs (later)
   //   - push notifications (when APNs/FCM creds arrive)
 
   let scheduler: ReminderScheduler | undefined;

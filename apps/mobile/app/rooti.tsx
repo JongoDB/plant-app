@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,6 +24,7 @@ import {
   pickFromLibrary,
   type PickedImage,
 } from '../src/utils/imagePicker';
+import { getLocation, type LatLng } from '../src/utils/location';
 
 type ToolEvent =
   | { kind: 'pending'; id: string; name: string }
@@ -67,7 +68,17 @@ function RootiChat() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const conversationIdRef = useRef<string | undefined>(undefined);
+  const locationRef = useRef<LatLng | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+
+  // Best-effort location fetch on chat open. We don't block on it — if the
+  // user denies, Rooti just answers without weather context.
+  useEffect(() => {
+    void (async () => {
+      const loc = await getLocation();
+      locationRef.current = loc;
+    })();
+  }, []);
 
   const headerTitle = plantName
     ? `${branding.ASSISTANT_NAME} · ${plantName}`
@@ -146,6 +157,7 @@ function RootiChat() {
         anchorPlantId: plantId,
         text: text || 'Take a look at this photo.',
         photoIds: photoToSend ? [photoToSend.photoId] : undefined,
+        ...(locationRef.current ? { location: locationRef.current } : {}),
         onConversation: (id) => {
           conversationIdRef.current = id;
         },
