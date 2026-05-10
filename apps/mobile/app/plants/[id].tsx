@@ -7,7 +7,7 @@ import type { CareEvent, CareEventKind, PhotoEntry, Plant, Reminder } from '@pla
 import { ApiError, plantsApi } from '../../src/api/client';
 import { uploadPhoto } from '../../src/api/photos';
 import { remindersApi } from '../../src/api/reminders';
-import { speciesSlug } from '../../src/api/species';
+import { speciesApi, speciesSlug, type SpeciesEntry } from '../../src/api/species';
 import { AuthedImage } from '../../src/components/AuthedImage';
 import { Button } from '../../src/components/Button';
 import { ReminderRow } from '../../src/components/ReminderRow';
@@ -38,6 +38,7 @@ function PlantDetail() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [photoList, setPhotoList] = useState<PhotoEntry[]>([]);
   const [careLog, setCareLog] = useState<CareEvent[]>([]);
+  const [species, setSpecies] = useState<SpeciesEntry | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'not_found' | 'error'>('loading');
   const [error, setError] = useState<string | undefined>();
   const [deleting, setDeleting] = useState(false);
@@ -57,6 +58,18 @@ function PlantDetail() {
       setPhotoList(ph);
       setCareLog(ce);
       setStatus('ready');
+      // Best-effort species lookup. Silently no-ops if the scientific
+      // name doesn't map to a row in our local library.
+      if (p.scientificName) {
+        try {
+          const s = await speciesApi.get(speciesSlug(p.scientificName));
+          setSpecies(s);
+        } catch {
+          setSpecies(null);
+        }
+      } else {
+        setSpecies(null);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setStatus('not_found');
@@ -213,6 +226,8 @@ function PlantDetail() {
           <DetailRow label="Notes" value={plant.notes} />
         </View>
 
+        <CareStatusCard species={species} careLog={careLog} />
+
         <View style={styles.photosBlock}>
           <View style={styles.photosHeader}>
             <Text style={styles.sectionLabel}>
@@ -344,6 +359,78 @@ function PlantDetail() {
       </Screen>
     </>
   );
+}
+
+/**
+ * Tiny rule-based water-status hint. Combines the species library's
+ * recommended interval with the last 'water' event from the care log.
+ * Doesn't fire if neither is known — there's no useful thing to say
+ * with no data, and nagging users who haven't engaged yet is annoying.
+ */
+function CareStatusCard({
+  species,
+  careLog,
+}: {
+  species: SpeciesEntry | null;
+  careLog: CareEvent[];
+}) {
+  const lastWater = careLog.find((e) => e.kind === 'water');
+  const interval = species?.waterFrequencyDays;
+  if (!lastWater && !interval) return null;
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const daysSince = lastWater
+    ? Math.floor((Date.now() - new Date(lastWater.occurredAt).getTime()) / dayMs)
+    : null;
+
+  let tone: 'ok' | 'soon' | 'overdue' = 'ok';
+  let lead = '';
+  if (daysSince != null && interval) {
+    if (daysSince > interval.max) {
+      tone = 'overdue';
+      lead = 'Likely overdue.';
+    } else if (daysSince >= interval.min) {
+      tone = 'soon';
+      lead = 'Probably ready for water.';
+    } else {
+      tone = 'ok';
+      lead = 'Soil should still be holding moisture.';
+    }
+  } else if (daysSince != null) {
+    lead = `Last watered ${daysSinceLabel(daysSince)}.`;
+  } else if (interval) {
+    lead = 'No water logged yet.';
+  }
+
+  const detail: string[] = [];
+  if (daysSince != null) detail.push(`Last water: ${daysSinceLabel(daysSince)}`);
+  if (interval) {
+    detail.push(`Recommended every ${interval.min}–${interval.max} days`);
+  }
+
+  const toneStyle =
+    tone === 'overdue'
+      ? styles.careStatusOverdue
+      : tone === 'soon'
+        ? styles.careStatusSoon
+        : styles.careStatusOk;
+
+  return (
+    <View style={[styles.careStatus, toneStyle]}>
+      <Text style={styles.careStatusLead}>💧 {lead}</Text>
+      {detail.length > 0 ? (
+        <Text style={styles.careStatusDetail}>{detail.join(' · ')}</Text>
+      ) : null}
+    </View>
+  );
+}
+
+function daysSinceLabel(days: number): string {
+  if (days <= 0) return 'today';
+  if (days === 1) return '1 day ago';
+  if (days < 14) return `${days} days ago`;
+  if (days < 60) return `${Math.round(days / 7)} weeks ago`;
+  return `${Math.round(days / 30)} months ago`;
 }
 
 function careKindEmoji(kind: CareEventKind): string {
@@ -512,6 +599,34 @@ const styles = StyleSheet.create({
     borderRadius: theme.radii.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
+  },
+  careStatus: {
+    marginTop: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderRadius: theme.radii.md,
+    borderWidth: 1,
+    gap: theme.spacing.xs,
+  },
+  careStatusOk: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+  },
+  careStatusSoon: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.primary,
+  },
+  careStatusOverdue: {
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.danger,
+  },
+  careStatusLead: {
+    fontSize: theme.fontSize.md,
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  careStatusDetail: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
   },
   careKind: {
     fontSize: theme.fontSize.md,
