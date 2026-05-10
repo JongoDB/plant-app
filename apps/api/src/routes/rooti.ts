@@ -50,7 +50,9 @@ const bodySchema = z.object({
   conversationId: z.uuid().optional(),
   anchorPlantId: z.uuid().optional(),
   text: z.string().trim().min(1).max(8000),
-  photoIds: z.array(z.uuid()).max(4).optional(),
+  // 4 was the casual-chat ceiling; bumped to 12 so a "walkthrough" can
+  // attach a photo per plant in one turn without splitting the request.
+  photoIds: z.array(z.uuid()).max(12).optional(),
   location: z
     .object({
       lat: z.number().min(-90).max(90),

@@ -205,6 +205,14 @@ function PlantsList() {
               </Text>
             </Pressable>
 
+            {plants.length > 0 ? (
+              <Button
+                title="Walk through my plants"
+                variant="secondary"
+                onPress={() => router.push('/walkthrough')}
+              />
+            ) : null}
+
             {error ? <Text style={styles.error}>{error}</Text> : null}
           </View>
         }
