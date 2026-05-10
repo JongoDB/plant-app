@@ -18,6 +18,7 @@ import { branding } from '@plant-app/shared';
 import { streamRootiMessage } from '../src/api/rooti';
 import { uploadPhoto } from '../src/api/photos';
 import { RequireAuth } from '../src/components/RequireAuth';
+import { tts } from '../src/services/tts/expoSpeechEngine';
 import { theme } from '../src/theme';
 import {
   pickFromCamera,
@@ -67,9 +68,36 @@ function RootiChat() {
   const [attaching, setAttaching] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [speakingId, setSpeakingId] = useState<string | undefined>();
   const conversationIdRef = useRef<string | undefined>(undefined);
   const locationRef = useRef<LatLng | null>(null);
   const listRef = useRef<FlatList<ChatMessage>>(null);
+
+  const toggleSpeak = useCallback(
+    async (messageId: string, text: string) => {
+      if (speakingId === messageId) {
+        await tts.stop();
+        setSpeakingId(undefined);
+        return;
+      }
+      try {
+        setSpeakingId(messageId);
+        await tts.speak({ text });
+      } catch {
+        // ignore — may have been preempted
+      } finally {
+        setSpeakingId((current) => (current === messageId ? undefined : current));
+      }
+    },
+    [speakingId],
+  );
+
+  // Stop any in-flight speech when the user navigates away.
+  useEffect(() => {
+    return () => {
+      void tts.stop();
+    };
+  }, []);
 
   // Best-effort location fetch on chat open. We don't block on it — if the
   // user denies, Rooti just answers without weather context.
@@ -219,7 +247,13 @@ function RootiChat() {
           data={messages}
           keyExtractor={(m) => m.id}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => <MessageBubble message={item} />}
+          renderItem={({ item }) => (
+            <MessageBubble
+              message={item}
+              speaking={speakingId === item.id}
+              onToggleSpeak={() => void toggleSpeak(item.id, item.text)}
+            />
+          )}
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>Hi, I'm {branding.ASSISTANT_NAME}.</Text>
@@ -290,8 +324,17 @@ function RootiChat() {
   );
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function MessageBubble({
+  message,
+  speaking,
+  onToggleSpeak,
+}: {
+  message: ChatMessage;
+  speaking: boolean;
+  onToggleSpeak: () => void;
+}) {
   const isUser = message.role === 'user';
+  const canSpeak = !isUser && !message.pending && message.text.length > 0;
   return (
     <View style={[styles.bubbleRow, isUser ? styles.bubbleRowRight : styles.bubbleRowLeft]}>
       <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
@@ -311,6 +354,15 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           </Text>
         ) : message.pending ? (
           <ActivityIndicator color={theme.colors.primary} size="small" />
+        ) : null}
+        {canSpeak ? (
+          <Pressable
+            onPress={onToggleSpeak}
+            hitSlop={6}
+            style={({ pressed }) => [styles.speakButton, pressed && { opacity: 0.7 }]}
+          >
+            <Text style={styles.speakButtonText}>{speaking ? '⏹  Stop' : '▶  Speak'}</Text>
+          </Pressable>
         ) : null}
       </View>
     </View>
@@ -425,6 +477,15 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: theme.radii.md,
+  },
+  speakButton: {
+    alignSelf: 'flex-start',
+    paddingVertical: theme.spacing.xs,
+  },
+  speakButtonText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.primary,
+    fontWeight: '500',
   },
   toolCard: {
     flexDirection: 'row',

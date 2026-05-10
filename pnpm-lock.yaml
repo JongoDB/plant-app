@@ -107,6 +107,9 @@ importers:
       expo-secure-store:
         specifier: ^55.0.13
         version: 55.0.13(expo@55.0.23)
+      expo-speech:
+        specifier: ~55.0.0
+        version: 55.0.13(expo@55.0.23)
       expo-status-bar:
         specifier: ~55.0.0
         version: 55.0.6(react-native@0.83.9(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)
@@ -2739,6 +2742,11 @@ packages:
   expo-server@55.0.9:
     resolution: {integrity: sha512-N5Ipn1NwqaJzEm+G97o0Jbe4g/th3R/16N1DabnYryXKCiZwDkK13/w3VfGkQN9LOOaBP+JIRxGf4M8lQKPzyA==}
     engines: {node: '>=20.16.0'}
+
+  expo-speech@55.0.13:
+    resolution: {integrity: sha512-DZzwe9Z6NhHmNi5ICwYE9BgcNmE3U8t0pSlg1vs18f6omyD88e1ZqCJ0as1aWgZYO3WtbcwWqCTboV8QMwtOow==}
+    peerDependencies:
+      expo: '*'
 
   expo-status-bar@55.0.6:
     resolution: {integrity: sha512-ijOUptfdiqYt7rObZ6jrPQ8sE5YN/8MxKCIJx0b7TY4nGkSJxhPIxeoW4GXcXCA8mTQ9PiOHH/ThLZgRVZvUlQ==}
@@ -7009,6 +7017,10 @@ snapshots:
       expo: 55.0.23(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.11)(expo-router@55.0.14)(react-dom@19.2.6(react@19.2.6))(react-native@0.83.9(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)(typescript@5.9.3)
 
   expo-server@55.0.9: {}
+
+  expo-speech@55.0.13(expo@55.0.23):
+    dependencies:
+      expo: 55.0.23(@babel/core@7.29.0)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.11)(expo-router@55.0.14)(react-dom@19.2.6(react@19.2.6))(react-native@0.83.9(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.6))(react@19.2.6)(typescript@5.9.3)
 
   expo-status-bar@55.0.6(react-native@0.83.9(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.6))(react@19.2.6):
     dependencies:
