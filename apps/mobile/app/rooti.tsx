@@ -23,6 +23,7 @@ import {
   type SttSession,
 } from '../src/services/stt/voiceStt';
 import { tts } from '../src/services/tts/expoSpeechEngine';
+import { SentenceBuffer } from '../src/services/tts/sentenceBuffer';
 import { theme } from '../src/theme';
 import {
   pickFromCamera,
@@ -74,9 +75,12 @@ function RootiChat() {
   const [error, setError] = useState<string | undefined>();
   const [speakingId, setSpeakingId] = useState<string | undefined>();
   const [listening, setListening] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
   const conversationIdRef = useRef<string | undefined>(undefined);
   const locationRef = useRef<LatLng | null>(null);
   const sttSessionRef = useRef<SttSession | null>(null);
+  const sentenceBufferRef = useRef<SentenceBuffer | null>(null);
+  const ttsQueueRef = useRef<Promise<void>>(Promise.resolve());
   const listRef = useRef<FlatList<ChatMessage>>(null);
 
   const toggleSpeak = useCallback(
@@ -133,6 +137,11 @@ function RootiChat() {
     sttSessionRef.current = null;
     setListening(false);
     if (session) await session.stop();
+    // In voice mode, treat mic-release as send. Give STT a beat to flush the
+    // final transcript into `input` before reading it.
+    if (voiceMode) {
+      setTimeout(() => void send(), 250);
+    }
   };
 
   // Best-effort location fetch on chat open. We don't block on it — if the
@@ -215,6 +224,20 @@ function RootiChat() {
       setMessages((prev) => prev.map((m) => (m.id === assistantId ? mut(m) : m)));
     };
 
+    // In voice mode we sentence-buffer text deltas and queue each sentence
+    // to TTS so Rooti starts speaking before the full message arrives.
+    const buffer = voiceMode ? new SentenceBuffer() : null;
+    sentenceBufferRef.current = buffer;
+    if (voiceMode) {
+      ttsQueueRef.current = Promise.resolve();
+      setSpeakingId(assistantId);
+    }
+    const queueSpeak = (sentence: string) => {
+      ttsQueueRef.current = ttsQueueRef.current
+        .catch(() => undefined)
+        .then(() => tts.speak({ text: sentence }));
+    };
+
     try {
       await streamRootiMessage({
         conversationId: conversationIdRef.current,
@@ -227,6 +250,7 @@ function RootiChat() {
         },
         onTextDelta: (delta) => {
           updateAssistant((m) => ({ ...m, text: m.text + delta }));
+          if (buffer) buffer.push(delta, queueSpeak);
           scrollToEnd();
         },
         onToolUseStart: (id, name) => {
@@ -256,6 +280,7 @@ function RootiChat() {
         },
         onDone: () => {
           updateAssistant((m) => ({ ...m, pending: false }));
+          if (buffer) buffer.flush(queueSpeak);
         },
       });
     } catch (err) {
@@ -265,14 +290,39 @@ function RootiChat() {
     } finally {
       setStreaming(false);
       scrollToEnd();
+      if (voiceMode) {
+        // Clear the speaker indicator when the queue drains.
+        ttsQueueRef.current = ttsQueueRef.current.then(() => {
+          setSpeakingId((current) => (current === assistantId ? undefined : current));
+        });
+      }
+      sentenceBufferRef.current = null;
     }
-  }, [input, pendingPhoto, streaming, plantId, scrollToEnd]);
+  }, [input, pendingPhoto, streaming, plantId, scrollToEnd, voiceMode]);
 
   const sendDisabled = (!input.trim() && !pendingPhoto) || streaming;
 
   return (
     <>
-      <Stack.Screen options={{ title: headerTitle }} />
+      <Stack.Screen
+        options={{
+          title: headerTitle,
+          headerRight: () => (
+            <Pressable
+              onPress={() => {
+                if (voiceMode) void tts.stop();
+                setVoiceMode((v) => !v);
+              }}
+              hitSlop={8}
+              style={styles.voiceModeButton}
+            >
+              <Text style={[styles.voiceModeText, voiceMode && styles.voiceModeOn]}>
+                {voiceMode ? '🔊 Voice on' : '🔇 Voice off'}
+              </Text>
+            </Pressable>
+          ),
+        }}
+      />
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -622,6 +672,17 @@ const styles = StyleSheet.create({
   },
   micActiveIcon: {
     color: theme.colors.surface,
+  },
+  voiceModeButton: {
+    paddingHorizontal: theme.spacing.sm,
+  },
+  voiceModeText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textMuted,
+    fontWeight: '500',
+  },
+  voiceModeOn: {
+    color: theme.colors.primary,
   },
   input: {
     flex: 1,
